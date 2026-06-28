@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Plus, Trash2, ToggleLeft, ToggleRight, Upload, X, Link2, Pencil, ChevronDown, Search } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 interface AutomationRule {
   id: string
