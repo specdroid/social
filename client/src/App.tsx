@@ -12,7 +12,7 @@ function LoginPage() {
   const [name, setName] = useState('')
   const [isRegister, setIsRegister] = useState(false)
   const [error, setError] = useState('')
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+  const API_URL = import.meta.env.VITE_API_URL || ''
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
