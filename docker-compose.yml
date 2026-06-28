@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: social-automation
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - auth_data:/app/auth_info_baileys
+      - db_data:/app/server/prisma
+      - logs:/app/logs
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 12G
+        reservations:
+          cpus: '1'
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  auth_data:
+  db_data:
+  logs:

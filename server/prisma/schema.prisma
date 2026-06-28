@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Tier {
+  free
+  premium
+}
+
+model User {
+  id                   String             @id @default(cuid())
+  email                String             @unique
+  name                 String?
+  passwordHash         String
+  tier                 Tier               @default(free)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  expiresAt            DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  facebookPages        FacebookPage[]
+  instagramAccounts    InstagramAccount[]
+  scheduledPosts       ScheduledPost[]
+  automationRules      AutomationRule[]
+  whatsappSessions     WhatsAppSession[]
+  sessions             Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model FacebookPage {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  pageId        String   @unique
+  pageName      String?
+  accessToken   String
+  pageToken     String?
+  webhookActive Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model InstagramAccount {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  igBusinessId  String   @unique
+  accountName   String?
+  accessToken   String
+  webhookActive Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model WhatsAppSession {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  phone       String?
+  isConnected Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AutomationRule {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  name          String
+  platform      String
+  triggerType   String
+  triggerValue  String
+  actionType    String
+  actionPayload String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ScheduledPost {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  platform     String
+  content      String
+  mediaUrls    String?
+  scheduledAt  DateTime
+  publishedAt  DateTime?
+  status       String    @default("pending")
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model SystemLog {
+  id        String   @id @default(cuid())
+  level     String
+  source    String
+  message   String
+  details   String?
+  createdAt DateTime @default(now())
+}
+
+model RetryQueue {
+  id          String   @id @default(cuid())
+  source      String
+  payload     String
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(3)
+  lastError   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+*.db
+*.db-journal
+.env
+.env.local
+logs/
+auth_info_baileys/
+.DS_Store
+*.vcf
+facebook page access token.txt
+uploads/
+
