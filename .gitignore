@@ -6,6 +6,7 @@ build/
 .env
 .env.local
 logs/
+*.log
 auth_info_baileys/
 .DS_Store
 *.vcf
