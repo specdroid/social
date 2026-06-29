@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   GitBranch,
   MessageSquare,
+  Facebook,
   CreditCard,
   LogOut,
   Menu,
@@ -13,6 +14,7 @@ import {
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/automation', label: 'Automation', icon: GitBranch },
+  { path: '/facebook', label: 'Facebook', icon: Facebook },
   { path: '/whatsapp', label: 'WhatsApp', icon: MessageSquare },
   { path: '/billing', label: 'Billing', icon: CreditCard },
 ]

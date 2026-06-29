@@ -4,6 +4,7 @@ import { Layout } from './components/Layout'
 import { Dashboard } from './pages/Dashboard'
 import { Automation } from './pages/Automation'
 import { WhatsApp } from './pages/WhatsApp'
+import { Facebook } from './pages/Facebook'
 import { Billing } from './pages/Billing'
 
 function LoginPage() {
@@ -149,6 +150,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Layout><WhatsApp /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/facebook"
+          element={
+            <ProtectedRoute>
+              <Layout><Facebook /></Layout>
             </ProtectedRoute>
           }
         />
