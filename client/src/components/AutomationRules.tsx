@@ -62,6 +62,7 @@ export function AutomationRules() {
     scheduledAt: '',
   })
   const [showPostForm, setShowPostForm] = useState(false)
+  const [editingPost, setEditingPost] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -277,11 +278,40 @@ export function AutomationRules() {
     }
   }
 
-  async function createPost() {
+  async function savePost() {
     try {
-      await post('/api/automation/posts', postForm)
+      const localDate = new Date(postForm.scheduledAt)
+      if (isNaN(localDate.getTime())) return
+      const body = { ...postForm, scheduledAt: localDate.toISOString() }
+      if (editingPost) {
+        await put(`/api/automation/posts/${editingPost}`, body)
+      } else {
+        await post('/api/automation/posts', body)
+      }
       setShowPostForm(false)
+      setEditingPost(null)
       setPostForm({ platform: 'facebook', content: '', scheduledAt: '' })
+      await loadData()
+    } catch {
+      // handle error
+    }
+  }
+
+  function startEditPost(post: ScheduledPost) {
+    setEditingPost(post.id)
+    const d = new Date(post.scheduledAt)
+    const localISO = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+    setPostForm({
+      platform: post.platform,
+      content: post.content,
+      scheduledAt: localISO,
+    })
+    setShowPostForm(true)
+  }
+
+  async function deletePost(id: string) {
+    try {
+      await del(`/api/automation/posts/${id}`)
       await loadData()
     } catch {
       // handle error
@@ -688,9 +718,9 @@ export function AutomationRules() {
         </button>
       </div>
 
-      {showPostForm && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
-          <h3 className="text-lg font-semibold text-zinc-50">New Scheduled Post</h3>
+{showPostForm && (
+  <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
+    <h3 className="text-lg font-semibold text-zinc-50">{editingPost ? 'Edit Scheduled Post' : 'New Scheduled Post'}</h3>
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-zinc-400 mb-1">Platform</label>
@@ -724,14 +754,14 @@ export function AutomationRules() {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={createPost}
+              onClick={savePost}
               disabled={loading}
               className="px-4 py-2 bg-zinc-50 text-zinc-900 rounded-lg text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50"
             >
-              {loading ? 'Scheduling...' : 'Schedule'}
+              {loading ? 'Saving...' : editingPost ? 'Update' : 'Schedule'}
             </button>
             <button
-              onClick={() => setShowPostForm(false)}
+              onClick={() => { setShowPostForm(false); setEditingPost(null); setPostForm({ platform: 'facebook', content: '', scheduledAt: '' }) }}
               className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg text-sm hover:bg-zinc-700 transition-colors"
             >
               Cancel
@@ -748,12 +778,13 @@ export function AutomationRules() {
               <th className="text-left px-4 py-3 text-zinc-400 font-medium">Platform</th>
               <th className="text-left px-4 py-3 text-zinc-400 font-medium">Scheduled</th>
               <th className="text-left px-4 py-3 text-zinc-400 font-medium">Status</th>
+              <th className="text-left px-4 py-3 text-zinc-400 font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
             {posts.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-zinc-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
                   No scheduled posts
                 </td>
               </tr>
@@ -773,6 +804,24 @@ export function AutomationRules() {
                   }`}>
                     {post.status}
                   </span>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => startEditPost(post)}
+                      className="text-zinc-400 hover:text-zinc-50 transition-colors"
+                      title="Edit"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => deletePost(post.id)}
+                      className="text-zinc-400 hover:text-red-400 transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

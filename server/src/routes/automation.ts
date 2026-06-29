@@ -95,6 +95,28 @@ router.post('/posts', requireAuth, checkPremiumTier, async (req: AuthRequest, re
   res.status(201).json({ post })
 })
 
+router.put('/posts/:id', requireAuth, checkPremiumTier, async (req: AuthRequest, res: Response) => {
+  const id = req.params.id as string
+  const { platform, content, mediaUrls, scheduledAt } = req.body
+
+  const existing = await prisma.scheduledPost.findFirst({
+    where: { id, userId: req.userId! },
+  })
+  if (!existing) throw new AppError(404, 'Post not found')
+
+  const post = await prisma.scheduledPost.update({
+    where: { id },
+    data: {
+      ...(platform !== undefined && { platform }),
+      ...(content !== undefined && { content }),
+      ...(mediaUrls !== undefined && { mediaUrls: mediaUrls ? JSON.stringify(mediaUrls) : null }),
+      ...(scheduledAt !== undefined && { scheduledAt: new Date(scheduledAt) }),
+    },
+  })
+
+  res.json({ post })
+})
+
 router.delete('/posts/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   const id = req.params.id as string
 
