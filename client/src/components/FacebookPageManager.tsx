@@ -94,6 +94,11 @@ export function FacebookPageManager() {
         </button>
       </div>
 
+      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-3 text-sm text-amber-400 flex items-center gap-2">
+        <AlertCircle className="w-4 h-4 shrink-0" />
+        You need to update your access token every 60 days
+      </div>
+
       {actionMsg && (
         <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${actionMsg.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
           {actionMsg.type === 'success' ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
