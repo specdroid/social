@@ -20,8 +20,9 @@ router.get('/', (req: Request, res: Response) => {
 
 router.post('/', async (req: Request, res: Response) => {
   const body = req.body
+  log('info', 'meta_api', 'Webhook POST received', { object: body?.object, body: JSON.stringify(body).substring(0, 500) })
 
-  if (body.object === 'page') {
+  if (body?.object === 'page') {
     for (const entry of body.entry || []) {
       try {
         await processMetaWebhookEntry(entry)
@@ -37,7 +38,7 @@ router.post('/', async (req: Request, res: Response) => {
     return
   }
 
-  res.status(404).send('Not found')
+  res.status(200).send('OK')
 })
 
 export default router
