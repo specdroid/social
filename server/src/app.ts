@@ -39,6 +39,26 @@ export function createApp(): express.Application {
     res.json({ status: 'ok', timestamp: new Date().toISOString() })
   })
 
+  app.get('/privacy', (_req, res) => {
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Privacy Policy - EduLb</title><style>body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.6;color:#333}h1{color:#1a1a2e}</style></head>
+<body>
+<h1>Privacy Policy</h1>
+<p>Last updated: June 29, 2026</p>
+<p>EduLb ("we", "our", "us") operates the edulb.duckdns.org website and the EduLb Facebook application.</p>
+<h2>Information We Collect</h2>
+<p>When you connect your Facebook page to our service, we collect and store your Facebook Page access token and Page ID to provide automation features such as auto-replying to comments and messages.</p>
+<h2>How We Use Your Information</h2>
+<p>We use your Page access token solely to reply to comments, send messages via Facebook Messenger, and publish scheduled posts on your behalf.</p>
+<h2>Data Storage</h2>
+<p>Your access token is stored securely in our database and is never shared with third parties. You can revoke access at any time by removing your Facebook Page from our application.</p>
+<h2>Contact</h2>
+<p>Email: ahmad.zeineddine@hotmail.com</p>
+</body>
+</html>`)
+  })
+
   app.use('/api/auth', authRoutes)
   app.use('/api/whatsapp', whatsappRoutes)
   app.use('/api/automation', automationRoutes)
