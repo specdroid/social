@@ -320,14 +320,14 @@ export function AutomationRules() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-zinc-50">Automation Rules</h2>
           <p className="text-zinc-400 text-sm mt-1">Trigger-Action rules for comments and messages</p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 px-4 py-2 bg-zinc-50 text-zinc-900 rounded-lg text-sm font-medium hover:bg-zinc-200 transition-colors"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-zinc-50 text-zinc-900 rounded-lg text-sm font-medium hover:bg-zinc-200 transition-colors"
         >
           <Plus className="w-4 h-4" />
           New Rule
@@ -650,68 +650,72 @@ export function AutomationRules() {
       )}
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-zinc-800">
-              <th className="text-left px-4 py-3 text-zinc-400 font-medium">Name</th>
-              <th className="text-left px-4 py-3 text-zinc-400 font-medium">Platform</th>
-              <th className="text-left px-4 py-3 text-zinc-400 font-medium">Trigger</th>
-              <th className="text-left px-4 py-3 text-zinc-400 font-medium">Active</th>
-              <th className="text-right px-4 py-3 text-zinc-400 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rules.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
-                  No automation rules yet. Create your first one!
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-800">
+                <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Name</th>
+                <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Platform</th>
+                <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Trigger</th>
+                <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Active</th>
+                <th className="text-right px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Actions</th>
               </tr>
-            )}
-            {rules.map((rule) => (
-              <tr key={rule.id} className="border-b border-zinc-800/50">
-                <td className="px-4 py-3 text-zinc-50">{rule.name}</td>
-                <td className="px-4 py-3 text-zinc-400 capitalize">{rule.platform}</td>
-                <td className="px-4 py-3 text-zinc-400">
-                  {rule.triggerType} = "{rule.triggerValue}"
-                </td>
-                <td className="px-4 py-3">
-                  <button onClick={() => toggleRule(rule)}>
-                    {rule.isActive ? (
-                      <ToggleRight className="w-5 h-5 text-emerald-400" />
-                    ) : (
-                      <ToggleLeft className="w-5 h-5 text-zinc-500" />
-                    )}
-                  </button>
-                </td>
-                <td className="px-4 py-3 text-right flex items-center justify-end gap-2">
-                  <button
-                    onClick={() => startEdit(rule)}
-                    className="text-zinc-500 hover:text-emerald-400 transition-colors"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => deleteRule(rule.id)}
-                    className="text-zinc-500 hover:text-red-400 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rules.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
+                    No automation rules yet. Create your first one!
+                  </td>
+                </tr>
+              )}
+              {rules.map((rule) => (
+                <tr key={rule.id} className="border-b border-zinc-800/50">
+                  <td className="px-4 py-3 text-zinc-50 whitespace-nowrap">{rule.name}</td>
+                  <td className="px-4 py-3 text-zinc-400 capitalize whitespace-nowrap">{rule.platform}</td>
+                  <td className="px-4 py-3 text-zinc-400 whitespace-nowrap">
+                    {rule.triggerType} = "{rule.triggerValue}"
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <button onClick={() => toggleRule(rule)}>
+                      {rule.isActive ? (
+                        <ToggleRight className="w-5 h-5 text-emerald-400" />
+                      ) : (
+                        <ToggleLeft className="w-5 h-5 text-zinc-500" />
+                      )}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => startEdit(rule)}
+                        className="text-zinc-500 hover:text-emerald-400 transition-colors"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteRule(rule.id)}
+                        className="text-zinc-500 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div className="flex items-center justify-between pt-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4">
         <div>
           <h3 className="text-lg font-semibold text-zinc-50">Scheduled Posts</h3>
           <p className="text-zinc-400 text-sm mt-1">Content queued for publishing</p>
         </div>
         <button
           onClick={() => setShowPostForm(!showPostForm)}
-          className="flex items-center gap-2 px-4 py-2 bg-zinc-50 text-zinc-900 rounded-lg text-sm font-medium hover:bg-zinc-200 transition-colors"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-zinc-50 text-zinc-900 rounded-lg text-sm font-medium hover:bg-zinc-200 transition-colors"
         >
           <Plus className="w-4 h-4" />
           Schedule Post
@@ -771,62 +775,64 @@ export function AutomationRules() {
       )}
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-zinc-800">
-              <th className="text-left px-4 py-3 text-zinc-400 font-medium">Content</th>
-              <th className="text-left px-4 py-3 text-zinc-400 font-medium">Platform</th>
-              <th className="text-left px-4 py-3 text-zinc-400 font-medium">Scheduled</th>
-              <th className="text-left px-4 py-3 text-zinc-400 font-medium">Status</th>
-              <th className="text-left px-4 py-3 text-zinc-400 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {posts.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
-                  No scheduled posts
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-800">
+                <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Content</th>
+                <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Platform</th>
+                <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Scheduled</th>
+                <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Status</th>
+                <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Actions</th>
               </tr>
-            )}
-            {posts.map((post) => (
-              <tr key={post.id} className="border-b border-zinc-800/50">
-                <td className="px-4 py-3 text-zinc-50 max-w-xs truncate">{post.content}</td>
-                <td className="px-4 py-3 text-zinc-400 capitalize">{post.platform}</td>
-                <td className="px-4 py-3 text-zinc-400">
-                  {new Date(post.scheduledAt).toLocaleString()}
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    post.status === 'published' ? 'bg-emerald-500/10 text-emerald-400' :
-                    post.status === 'failed' ? 'bg-red-500/10 text-red-400' :
-                    'bg-zinc-500/10 text-zinc-400'
-                  }`}>
-                    {post.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => startEditPost(post)}
-                      className="text-zinc-400 hover:text-zinc-50 transition-colors"
-                      title="Edit"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => deletePost(post.id)}
-                      className="text-zinc-400 hover:text-red-400 transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {posts.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
+                    No scheduled posts
+                  </td>
+                </tr>
+              )}
+              {posts.map((post) => (
+                <tr key={post.id} className="border-b border-zinc-800/50">
+                  <td className="px-4 py-3 text-zinc-50 max-w-xs truncate">{post.content}</td>
+                  <td className="px-4 py-3 text-zinc-400 capitalize whitespace-nowrap">{post.platform}</td>
+                  <td className="px-4 py-3 text-zinc-400 whitespace-nowrap">
+                    {new Date(post.scheduledAt).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      post.status === 'published' ? 'bg-emerald-500/10 text-emerald-400' :
+                      post.status === 'failed' ? 'bg-red-500/10 text-red-400' :
+                      'bg-zinc-500/10 text-zinc-400'
+                    }`}>
+                      {post.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => startEditPost(post)}
+                        className="text-zinc-400 hover:text-zinc-50 transition-colors"
+                        title="Edit"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deletePost(post.id)}
+                        className="text-zinc-400 hover:text-red-400 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )
