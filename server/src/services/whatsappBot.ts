@@ -686,7 +686,7 @@ function normalizeJid(jid: string): string {
   return jid.split(':')[0].split('@')[0]
 }
 
-function isAllowedSender(sender: string, payload: any, isGroup = false): boolean {
+function isAllowedSender(sender: string, payload: any, isGroup = false, remoteJid = ''): boolean {
   if (payload.contactJid) {
     const normSender = normalizeJid(sender)
     const normContact = normalizeJid(payload.contactJid)
@@ -755,7 +755,10 @@ function isAllowedSender(sender: string, payload: any, isGroup = false): boolean
       }
     }
 
-    if (isGroup && ownPhone && ownLid) {
+    // ownLid bridge only applies when the group chat is a member of this contact group
+    const groupJidNorm = normalizeJid(remoteJid)
+    const isRelevantGroup = group.memberJids.some(m => normalizeJid(m) === groupJidNorm)
+    if (isGroup && ownPhone && ownLid && isRelevantGroup) {
       log('info', 'whatsapp', 'isAllowedSender: ownPhone/ownLid bridge check', { normalizedSender, ownLid, ownPhone, membersNorm: group.memberJids.map(m => normalizeJid(m)) })
       if (normalizedSender === ownLid && group.memberJids.some(m => normalizeJid(m) === ownPhone)) { log('info', 'whatsapp', 'isAllowedSender: ownLid→ownPhone group bridge'); return true }
       if (normalizedSender === ownPhone && group.memberJids.some(m => normalizeJid(m) === ownLid)) { log('info', 'whatsapp', 'isAllowedSender: ownPhone→ownLid group bridge'); return true }
@@ -818,7 +821,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           }
           log('info', 'whatsapp', 'Text menu: rule payload', { ruleId: rule.id, interactive: payload.interactive, optionsCount: payload.options?.length })
           if (!payload.interactive || !payload.options) continue
-          if (!isAllowedSender(actualSender, payload, sender.endsWith('@g.us'))) {
+          if (!isAllowedSender(actualSender, payload, sender.endsWith('@g.us'), sender)) {
             log('info', 'whatsapp', 'Text menu: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
             continue
           }
@@ -853,7 +856,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           log('info', 'whatsapp', 'Follow-up: not interactive', { ruleId: rule.id })
           continue
         }
-        if (!isAllowedSender(actualSender, payload, sender.endsWith('@g.us'))) {
+        if (!isAllowedSender(actualSender, payload, sender.endsWith('@g.us'), sender)) {
           log('info', 'whatsapp', 'Follow-up: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
           continue
         }
@@ -908,7 +911,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         payload = { replyText: rule.actionPayload }
       }
 
-      if (!isAllowedSender(actualSender, payload, sender.endsWith('@g.us'))) {
+      if (!isAllowedSender(actualSender, payload, sender.endsWith('@g.us'), sender)) {
         log('info', 'whatsapp', 'Main: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
         continue
       }
