@@ -845,6 +845,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         payload = { replyText: rule.actionPayload }
       }
 
+      log('info', 'whatsapp', 'Main: checking payload', { ruleId: rule.id, payload, ownPhone, ownLid })
       if (!isAllowedSender(actualSender, payload)) {
         log('info', 'whatsapp', 'Main: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
         continue
