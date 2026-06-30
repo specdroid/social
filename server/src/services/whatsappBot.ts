@@ -656,7 +656,30 @@ function normalizeJid(jid: string): string {
 
 function isAllowedSender(sender: string, payload: any): boolean {
   if (payload.contactJid) {
-    return normalizeJid(sender) === normalizeJid(payload.contactJid)
+    const normSender = normalizeJid(sender)
+    const normContact = normalizeJid(payload.contactJid)
+
+    if (normSender === normContact) return true
+
+    // Bridge LID↔phone number via contacts array
+    const contact = contactsArray.find(c =>
+      normalizeJid(c.id) === normContact || c.phoneNumber === normContact
+    )
+    if (contact) {
+      if (normalizeJid(contact.id) === normSender) return true
+      if (contact.phoneNumber === normSender) return true
+    }
+
+    // Reverse: find sender in contacts then compare with stored contactJid
+    const senderContact = contactsArray.find(c =>
+      normalizeJid(c.id) === normSender || c.phoneNumber === normSender
+    )
+    if (senderContact) {
+      if (normalizeJid(senderContact.id) === normContact) return true
+      if (senderContact.phoneNumber === normContact) return true
+    }
+
+    return false
   }
   if (payload.contactGroupId) {
     const group = contactGroups.find(g => g.id === payload.contactGroupId)
