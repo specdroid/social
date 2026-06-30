@@ -697,7 +697,13 @@ function isAllowedSender(sender: string, payload: any): boolean {
     const group = contactGroups.find(g => g.id === payload.contactGroupId)
     if (!group) return false
     const normalizedSender = normalizeJid(sender)
-    return group.memberJids.some(m => normalizeJid(m) === normalizedSender)
+    if (group.memberJids.some(m => normalizeJid(m) === normalizedSender)) return true
+    // Also bridge ownPhone↔ownLid for group membership
+    if (ownPhone && ownLid) {
+      if (normalizedSender === ownLid && group.memberJids.some(m => normalizeJid(m) === ownPhone)) return true
+      if (normalizedSender === ownPhone && group.memberJids.some(m => normalizeJid(m) === ownLid)) return true
+    }
+    return false
   }
   return true
 }
