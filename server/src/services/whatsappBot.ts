@@ -500,6 +500,21 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
 
     sock.ev.on('contacts.update', (updates) => {
       log('info', 'whatsapp', 'contacts.update event', { count: updates.length, first: updates[0] })
+      for (const u of updates) {
+        const existing = contactsArray.find(c => c.id === u.id)
+        if (existing) {
+          if ((u as any).lid) existing.lid = (u as any).lid
+        } else {
+          contactsArray.push({
+            id: u.id,
+            lid: (u as any).lid,
+            name: u.name,
+            notify: u.notify,
+            verifiedName: u.verifiedName,
+          })
+        }
+      }
+      saveContactsToDisk()
     })
 
     sock.ev.on('messaging-history.set', (data) => {
@@ -697,12 +712,40 @@ function isAllowedSender(sender: string, payload: any): boolean {
     const group = contactGroups.find(g => g.id === payload.contactGroupId)
     if (!group) return false
     const normalizedSender = normalizeJid(sender)
+
+    // Direct match on member JIDs
     if (group.memberJids.some(m => normalizeJid(m) === normalizedSender)) return true
-    // Also bridge ownPhone↔ownLid for group membership
+
+    // Bridge LID↔phone via contacts array for ANY sender
+    const senderEntry = contactsArray.find(c =>
+      normalizeJid(c.id) === normalizedSender || (c.lid && normalizeJid(c.lid) === normalizedSender)
+    )
+    if (senderEntry) {
+      const contactIds = [normalizeJid(senderEntry.id)]
+      if (senderEntry.lid) contactIds.push(normalizeJid(senderEntry.lid))
+      if (senderEntry.phoneNumber) contactIds.push(normalizeJid(senderEntry.phoneNumber))
+      if (group.memberJids.some(m => contactIds.includes(normalizeJid(m)))) return true
+    }
+
+    // Reverse: check each group member's contact entry for the sender's JID
+    for (const memberJid of group.memberJids) {
+      const memberEntry = contactsArray.find(c =>
+        normalizeJid(c.id) === normalizeJid(memberJid) || (c.lid && normalizeJid(c.lid) === normalizeJid(memberJid))
+      )
+      if (memberEntry) {
+        const memberIds = [normalizeJid(memberEntry.id)]
+        if (memberEntry.lid) memberIds.push(normalizeJid(memberEntry.lid))
+        if (memberEntry.phoneNumber) memberIds.push(normalizeJid(memberEntry.phoneNumber))
+        if (memberIds.includes(normalizedSender)) return true
+      }
+    }
+
+    // Bridge ownPhone↔ownLid for the user's own messages
     if (ownPhone && ownLid) {
       if (normalizedSender === ownLid && group.memberJids.some(m => normalizeJid(m) === ownPhone)) return true
       if (normalizedSender === ownPhone && group.memberJids.some(m => normalizeJid(m) === ownLid)) return true
     }
+
     return false
   }
   return true
@@ -845,7 +888,6 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         payload = { replyText: rule.actionPayload }
       }
 
-      log('info', 'whatsapp', 'Main: checking payload', { ruleId: rule.id, payload, ownPhone, ownLid })
       if (!isAllowedSender(actualSender, payload)) {
         log('info', 'whatsapp', 'Main: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
         continue
