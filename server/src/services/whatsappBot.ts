@@ -668,6 +668,7 @@ function isAllowedSender(sender: string, payload: any): boolean {
     if (contact) {
       if (normalizeJid(contact.id) === normSender) return true
       if (contact.phoneNumber === normSender) return true
+      log('info', 'whatsapp', 'isAllowedSender: found contact but no match', { normSender, normContact, contactJid: contact.id, contactPhone: contact.phoneNumber })
     }
 
     // Reverse: find sender in contacts then compare with stored contactJid
@@ -677,8 +678,10 @@ function isAllowedSender(sender: string, payload: any): boolean {
     if (senderContact) {
       if (normalizeJid(senderContact.id) === normContact) return true
       if (senderContact.phoneNumber === normContact) return true
+      log('info', 'whatsapp', 'isAllowedSender: found senderContact but no match', { normSender, normContact, contactJid: senderContact.id, contactPhone: senderContact.phoneNumber })
     }
 
+    log('info', 'whatsapp', 'isAllowedSender: no match in contacts', { normSender, normContact, contactsCount: contactsArray.length, sampleIds: contactsArray.slice(0, 5).map(c => ({ id: c.id, phone: c.phoneNumber })) })
     return false
   }
   if (payload.contactGroupId) {
