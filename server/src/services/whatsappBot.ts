@@ -650,13 +650,19 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
   }
 }
 
+function normalizeJid(jid: string): string {
+  return jid.split(':')[0].split('@')[0]
+}
+
 function isAllowedSender(sender: string, payload: any): boolean {
   if (payload.contactJid) {
-    return sender === payload.contactJid
+    return normalizeJid(sender) === normalizeJid(payload.contactJid)
   }
   if (payload.contactGroupId) {
     const group = contactGroups.find(g => g.id === payload.contactGroupId)
-    return group ? group.memberJids.includes(sender) : false
+    if (!group) return false
+    const normalizedSender = normalizeJid(sender)
+    return group.memberJids.some(m => normalizeJid(m) === normalizedSender)
   }
   return true
 }
