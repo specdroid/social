@@ -26,6 +26,7 @@ let stopReconnecting = false
 let latestQrDataUrl: string | null = null
 interface ContactEntry {
   id: string;
+  lid?: string;
   name?: string;
   notify?: string;
   verifiedName?: string;
@@ -475,6 +476,7 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
         if (seen.has(c.id)) continue
         seen.set(c.id, {
           id: c.id,
+          lid: (c as any).lid,
           name: c.name,
           notify: c.notify,
           verifiedName: c.verifiedName,
@@ -661,27 +663,26 @@ function isAllowedSender(sender: string, payload: any): boolean {
 
     if (normSender === normContact) return true
 
-    // Bridge LID↔phone number via contacts array
+    // Find the stored contact by its JID or normalized number
     const contact = contactsArray.find(c =>
-      normalizeJid(c.id) === normContact || c.phoneNumber === normContact
+      normalizeJid(c.id) === normContact || c.id === payload.contactJid
     )
     if (contact) {
+      // Check contact's current JID (may have been updated to LID)
       if (normalizeJid(contact.id) === normSender) return true
-      if (contact.phoneNumber === normSender) return true
-      log('info', 'whatsapp', 'isAllowedSender: found contact but no match', { normSender, normContact, contactJid: contact.id, contactPhone: contact.phoneNumber })
+      // Check contact's LID field
+      if (contact.lid && normalizeJid(contact.lid) === normSender) return true
     }
 
-    // Reverse: find sender in contacts then compare with stored contactJid
+    // Reverse: find sender in contacts by JID or LID
     const senderContact = contactsArray.find(c =>
-      normalizeJid(c.id) === normSender || c.phoneNumber === normSender
+      normalizeJid(c.id) === normSender || (c.lid && normalizeJid(c.lid) === normSender)
     )
     if (senderContact) {
       if (normalizeJid(senderContact.id) === normContact) return true
-      if (senderContact.phoneNumber === normContact) return true
-      log('info', 'whatsapp', 'isAllowedSender: found senderContact but no match', { normSender, normContact, contactJid: senderContact.id, contactPhone: senderContact.phoneNumber })
+      if (senderContact.lid && normalizeJid(senderContact.lid) === normContact) return true
     }
 
-    log('info', 'whatsapp', 'isAllowedSender: no match in contacts', { normSender, normContact, contactsCount: contactsArray.length, sampleIds: contactsArray.slice(0, 5).map(c => ({ id: c.id, phone: c.phoneNumber })) })
     return false
   }
   if (payload.contactGroupId) {
