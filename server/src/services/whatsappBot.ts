@@ -706,6 +706,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
   try {
     const sender = message.key.remoteJid
     if (!sender || sender.includes('status@broadcast')) return
+    const actualSender = message.key.participant || sender
 
     const listResponse = message.message?.listResponseMessage
     const interactiveResponse = message.message?.interactiveResponseMessage
@@ -748,8 +749,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           }
           log('info', 'whatsapp', 'Text menu: rule payload', { ruleId: rule.id, interactive: payload.interactive, optionsCount: payload.options?.length })
           if (!payload.interactive || !payload.options) continue
-          if (!isAllowedSender(sender, payload)) {
-            log('info', 'whatsapp', 'Text menu: sender not allowed for rule', { ruleId: rule.id, sender })
+          if (!isAllowedSender(actualSender, payload)) {
+            log('info', 'whatsapp', 'Text menu: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
             continue
           }
           const optionIndex = num - 1
@@ -783,8 +784,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           log('info', 'whatsapp', 'Follow-up: not interactive', { ruleId: rule.id })
           continue
         }
-        if (!isAllowedSender(sender, payload)) {
-          log('info', 'whatsapp', 'Follow-up: sender not allowed for rule', { ruleId: rule.id, sender })
+        if (!isAllowedSender(actualSender, payload)) {
+          log('info', 'whatsapp', 'Follow-up: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
           continue
         }
         const option = payload.options.find((o: any) => o.id === selectedId)
@@ -838,8 +839,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         payload = { replyText: rule.actionPayload }
       }
 
-      if (!isAllowedSender(sender, payload)) {
-        log('info', 'whatsapp', 'Main: sender not allowed for rule', { ruleId: rule.id, sender })
+      if (!isAllowedSender(actualSender, payload)) {
+        log('info', 'whatsapp', 'Main: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
         continue
       }
 
