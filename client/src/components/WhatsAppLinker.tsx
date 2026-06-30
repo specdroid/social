@@ -201,6 +201,13 @@ export function WhatsAppLinker() {
     try {
       const res = await post<{ deleted: number }>('/api/whatsapp/cleanup-auth')
       setCleanAuthResult(`Cleaned ${res.deleted} stale auth files`)
+      setWaConnected(false)
+      setQrCode(null)
+      setStatusState('idle')
+      setStatusMessage('Auth cleaned. Click "Connect WhatsApp" to generate a new QR code.')
+      if (socket?.connected) {
+        socket.emit('whatsapp:connect')
+      }
     } catch {
       setCleanAuthResult('Failed to clean auth files')
     } finally {
@@ -457,17 +464,7 @@ export function WhatsAppLinker() {
                   {sendTestResult}
                 </p>
               )}
-              <button
-                onClick={handleCleanAuth}
-                disabled={cleanAuthLoading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-amber-500/10 text-amber-400 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition-colors disabled:opacity-50"
-              >
-                {cleanAuthLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                {cleanAuthLoading ? 'Cleaning...' : 'Clean Auth Files'}
-              </button>
-              {cleanAuthResult && (
-                <p className="text-xs text-center text-zinc-400">{cleanAuthResult}</p>
-              )}
+
               <button
                 onClick={() => {
                   if (contactsOpen) {
@@ -916,7 +913,21 @@ export function WhatsAppLinker() {
         </div>
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-md">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-md space-y-4">
+        <button
+          onClick={handleCleanAuth}
+          disabled={cleanAuthLoading}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-amber-500/10 text-amber-400 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+        >
+          {cleanAuthLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+          {cleanAuthLoading ? 'Cleaning...' : 'Clean Auth Files'}
+        </button>
+        {cleanAuthResult && (
+          <p className="text-xs text-center text-zinc-400">{cleanAuthResult}</p>
+        )}
+
+        <hr className="border-zinc-800" />
+
         <button
           onClick={() => setDiagOpen(!diagOpen)}
           className="w-full flex items-center justify-between text-zinc-50"
