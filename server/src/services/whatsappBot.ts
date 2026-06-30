@@ -562,7 +562,7 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
           isStarting = false
           latestQrDataUrl = null
           ownPhone = sock.user?.id ? normalizeJid(sock.user.id) : null
-          ownLid = (sock.user as any)?.lid ? normalizeJid((sock.user as any).lid) : null
+          ownLid = (sock.user as any)?.lid ? (sock.user as any).lid.replace(/(:\d+)?(@lid)?$/, '') : null
           log('info', 'whatsapp', 'WhatsApp connected successfully', { ownPhone, ownLid })
 
           emit('whatsapp:ready', { connected: true })
