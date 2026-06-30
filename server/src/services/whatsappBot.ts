@@ -726,6 +726,12 @@ function isAllowedSender(sender: string, payload: any, isGroup = false, remoteJi
 
     if (group.memberJids.some(m => normalizeJid(m) === normalizedSender)) { log('info', 'whatsapp', 'isAllowedSender: direct group member match'); return true }
 
+    // If the message is from a group chat whose JID is a member of this contact group, allow all senders
+    if (isGroup && group.memberJids.some(m => normalizeJid(m) === normalizeJid(remoteJid))) {
+      log('info', 'whatsapp', 'isAllowedSender: group chat is member of contact group, allowing', { remoteJid })
+      return true
+    }
+
     const senderEntry = contactsArray.find(c =>
       normalizeJid(c.id) === normalizedSender || (c.lid && normalizeJid(c.lid) === normalizedSender)
     )
