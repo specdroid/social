@@ -199,20 +199,20 @@ export function WhatsAppLinker() {
     setCleanAuthLoading(true)
     setCleanAuthResult(null)
     try {
-      const res = await post<{ deleted: number }>('/api/whatsapp/cleanup-auth')
-      setCleanAuthResult(`Cleaned ${res.deleted} stale auth files`)
+      const res = await post<{ deleted: number }>('/api/whatsapp/clear-credentials')
+      setCleanAuthResult(`Cleared ${res.deleted} auth files. Generating new QR code...`)
       setWaConnected(false)
       setQrCode(null)
-      setStatusState('idle')
-      setStatusMessage('Auth cleaned. Click "Connect WhatsApp" to generate a new QR code.')
+      setStatusState('connecting')
+      setStatusMessage('Auth cleared. Starting fresh connection for new QR code...')
       if (socket?.connected) {
         socket.emit('whatsapp:connect')
       }
     } catch {
-      setCleanAuthResult('Failed to clean auth files')
+      setCleanAuthResult('Failed to clear credentials')
     } finally {
       setCleanAuthLoading(false)
-      setTimeout(() => setCleanAuthResult(null), 6000)
+      setTimeout(() => setCleanAuthResult(null), 8000)
     }
   }
 
