@@ -501,6 +501,7 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
     sock.ev.on('contacts.update', (updates) => {
       log('info', 'whatsapp', 'contacts.update event', { count: updates.length, first: updates[0] })
       for (const u of updates) {
+        if (!u.id) continue
         const existing = contactsArray.find(c => c.id === u.id)
         if (existing) {
           if ((u as any).lid) existing.lid = (u as any).lid
