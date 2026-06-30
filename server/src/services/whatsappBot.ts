@@ -650,6 +650,17 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
   }
 }
 
+function isAllowedSender(sender: string, payload: any): boolean {
+  if (payload.contactJid) {
+    return sender === payload.contactJid
+  }
+  if (payload.contactGroupId) {
+    const group = contactGroups.find(g => g.id === payload.contactGroupId)
+    return group ? group.memberJids.includes(sender) : false
+  }
+  return true
+}
+
 async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promise<void> {
   try {
     const sender = message.key.remoteJid
@@ -696,6 +707,10 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           }
           log('info', 'whatsapp', 'Text menu: rule payload', { ruleId: rule.id, interactive: payload.interactive, optionsCount: payload.options?.length })
           if (!payload.interactive || !payload.options) continue
+          if (!isAllowedSender(sender, payload)) {
+            log('info', 'whatsapp', 'Text menu: sender not allowed for rule', { ruleId: rule.id, sender })
+            continue
+          }
           const optionIndex = num - 1
           log('info', 'whatsapp', 'Text menu: checking option', { optionIndex, optionsLen: payload.options.length })
           if (optionIndex < payload.options.length) {
@@ -725,6 +740,10 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         }
         if (!payload.interactive || !payload.options) {
           log('info', 'whatsapp', 'Follow-up: not interactive', { ruleId: rule.id })
+          continue
+        }
+        if (!isAllowedSender(sender, payload)) {
+          log('info', 'whatsapp', 'Follow-up: sender not allowed for rule', { ruleId: rule.id, sender })
           continue
         }
         const option = payload.options.find((o: any) => o.id === selectedId)
@@ -771,11 +790,16 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         continue
       }
 
-      let payload: { replyText?: string; mediaUrl?: string; mediaUrls?: string[]; mediaType?: string; fileName?: string; caption?: string; interactive?: boolean; options?: Array<{ id: string; label: string; reply: string }> }
+      let payload: { replyText?: string; mediaUrl?: string; mediaUrls?: string[]; mediaType?: string; fileName?: string; caption?: string; interactive?: boolean; options?: Array<{ id: string; label: string; reply: string }>; contactJid?: string; contactGroupId?: string }
       try {
         payload = JSON.parse(rule.actionPayload)
       } catch {
         payload = { replyText: rule.actionPayload }
+      }
+
+      if (!isAllowedSender(sender, payload)) {
+        log('info', 'whatsapp', 'Main: sender not allowed for rule', { ruleId: rule.id, sender })
+        continue
       }
 
       function resolveMediaUrl(url: string): string {
