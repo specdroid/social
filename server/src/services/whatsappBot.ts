@@ -24,6 +24,8 @@ let isStarting = false
 let reconnectAttempts = 0
 let stopReconnecting = false
 let latestQrDataUrl: string | null = null
+let ownPhone: string | null = null
+let ownLid: string | null = null
 interface ContactEntry {
   id: string;
   lid?: string;
@@ -543,7 +545,9 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
           reconnectAttempts = 0
           isStarting = false
           latestQrDataUrl = null
-          log('info', 'whatsapp', 'WhatsApp connected successfully')
+          ownPhone = sock.user?.id ? normalizeJid(sock.user.id) : null
+          ownLid = (sock.user as any)?.lid ? normalizeJid((sock.user as any).lid) : null
+          log('info', 'whatsapp', 'WhatsApp connected successfully', { ownPhone, ownLid })
 
           emit('whatsapp:ready', { connected: true })
           emit('whatsapp:status', {
@@ -551,7 +555,7 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
             message: 'WhatsApp connected successfully.',
           })
 
-          const phone = sock.user?.id?.split(':')[0]
+          const phone = ownPhone
           if (phone) {
             try {
               const existing = await prisma.whatsAppSession.findFirst({
@@ -663,14 +667,18 @@ function isAllowedSender(sender: string, payload: any): boolean {
 
     if (normSender === normContact) return true
 
+    // Try ownPhone↔ownLid bridge (for messages from our own account)
+    if (ownPhone && ownLid) {
+      if (normSender === ownLid && normContact === ownPhone) return true
+      if (normSender === ownPhone && normContact === ownLid) return true
+    }
+
     // Find the stored contact by its JID or normalized number
     const contact = contactsArray.find(c =>
       normalizeJid(c.id) === normContact || c.id === payload.contactJid
     )
     if (contact) {
-      // Check contact's current JID (may have been updated to LID)
       if (normalizeJid(contact.id) === normSender) return true
-      // Check contact's LID field
       if (contact.lid && normalizeJid(contact.lid) === normSender) return true
     }
 
