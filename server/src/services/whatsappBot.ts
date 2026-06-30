@@ -591,6 +591,16 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
               // session tracking is best-effort
             }
           }
+
+          // Populate lid field for existing contacts via async resync
+          setImmediate(async () => {
+            try {
+              await (sock as any).resyncAppState(['regular', 'regular_low'], true)
+              log('info', 'whatsapp', 'Startup contacts resync triggered to populate lid fields')
+            } catch (err) {
+              log('warn', 'whatsapp', 'Startup contacts resync failed', { error: (err as Error).message })
+            }
+          })
         }
 
         if (connection === 'close') {
