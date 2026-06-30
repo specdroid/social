@@ -739,10 +739,13 @@ function isAllowedSender(sender: string, payload: any): boolean {
     }
 
     for (const memberJid of group.memberJids) {
+      const normMember = normalizeJid(memberJid)
       const memberEntry = contactsArray.find(c =>
-        normalizeJid(c.id) === normalizeJid(memberJid) || (c.lid && normalizeJid(c.lid) === normalizeJid(memberJid))
+        normalizeJid(c.id) === normMember ||
+        (c.lid && normalizeJid(c.lid) === normMember) ||
+        (c.phoneNumber && normalizeJid(c.phoneNumber) === normMember)
       )
-      log('info', 'whatsapp', 'isAllowedSender: reverse memberEntry', { memberJid, normalizedMember: normalizeJid(memberJid), found: !!memberEntry, entry: memberEntry ? { id: memberEntry.id, lid: memberEntry.lid, phoneNumber: memberEntry.phoneNumber } : null })
+      log('info', 'whatsapp', 'isAllowedSender: reverse memberEntry', { memberJid, normalizedMember: normMember, found: !!memberEntry, entry: memberEntry ? { id: memberEntry.id, lid: memberEntry.lid, phoneNumber: memberEntry.phoneNumber } : null })
       if (memberEntry) {
         const memberIds = [normalizeJid(memberEntry.id)]
         if (memberEntry.lid) memberIds.push(normalizeJid(memberEntry.lid))
@@ -756,6 +759,10 @@ function isAllowedSender(sender: string, payload: any): boolean {
       log('info', 'whatsapp', 'isAllowedSender: ownPhone/ownLid bridge check', { normalizedSender, ownLid, ownPhone, membersNorm: group.memberJids.map(m => normalizeJid(m)) })
       if (normalizedSender === ownLid && group.memberJids.some(m => normalizeJid(m) === ownPhone)) { log('info', 'whatsapp', 'isAllowedSender: ownLid→ownPhone group bridge'); return true }
       if (normalizedSender === ownPhone && group.memberJids.some(m => normalizeJid(m) === ownLid)) { log('info', 'whatsapp', 'isAllowedSender: ownPhone→ownLid group bridge'); return true }
+      // Fallback: ownPhone ends with the member JID (missing country code prefix)
+      const phone = ownPhone
+      const membersNorm = group.memberJids.map(m => normalizeJid(m))
+      if (normalizedSender === ownLid && membersNorm.some(m => phone!.endsWith(m))) { log('info', 'whatsapp', 'isAllowedSender: ownLid→ownPhone suffix fallback'); return true }
     }
 
     log('info', 'whatsapp', 'isAllowedSender contactGroupId: no match')
