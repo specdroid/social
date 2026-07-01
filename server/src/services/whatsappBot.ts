@@ -846,7 +846,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       const normSender = normalizeJid(sender)
       if (normSender !== ownPhone && normSender !== ownLid) return
 
-      // ── ws group1, group2: content ── forward to WhatsApp groups ──
+      // ── ws group1, group2: content ── forward to WhatsApp group chats ──
       const wsMatch = textContent.match(/^ws\s+(.+?):\s*(.*)/is)
       if (wsMatch) {
         const groupNames = wsMatch[1].split(',').map((s) => s.trim().toLowerCase())
@@ -854,28 +854,36 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
         if (groupNames.length === 0 || (!content && !hasMedia)) return
 
+        const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
+
         for (const gName of groupNames) {
-          const group = contactGroups.find((g) => g.name.toLowerCase() === gName)
-          if (!group) {
-            log('warn', 'whatsapp', 'whatsapp_groups: group not found', { gName })
+          const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter(Boolean)
+          const waGroup = Object.entries(allGroups).find(([, meta]) => {
+            const subject = (meta as any).subject?.toLowerCase() || ''
+            if (subject !== gName) return false
+            return (meta as any).participants?.some(
+              (p: any) => myJids.includes(normalizeJid(p.id)) && p.admin
+            )
+          })
+          if (!waGroup) {
+            log('warn', 'whatsapp', 'whatsapp_groups: group not found or not admin', { gName })
             continue
           }
-          for (const jid of group.memberJids) {
-            try {
-              const imageMsg = message.message?.imageMessage
-              if (imageMsg) {
-                const buffer = await downloadMediaMessage(message, 'buffer', {})
-                await sock.sendMessage(jid, { image: buffer, caption: content } as any)
-              } else if (message.message?.documentMessage) {
-                const buffer = await downloadMediaMessage(message, 'buffer', {})
-                await sock.sendMessage(jid, { document: buffer, caption: content, fileName: message.message.documentMessage.fileName || 'document' } as any)
-              } else {
-                await sock.sendMessage(jid, { text: content } as any)
-              }
-              log('info', 'whatsapp', 'whatsapp_groups: sent', { group: gName, jid })
-            } catch (err) {
-              log('error', 'whatsapp', 'whatsapp_groups: send failed', { group: gName, jid, error: (err as Error).message })
+          const groupJid = waGroup[0]
+          try {
+            const imageMsg = message.message?.imageMessage
+            if (imageMsg) {
+              const buffer = await downloadMediaMessage(message, 'buffer', {})
+              await sock.sendMessage(groupJid, { image: buffer, caption: content } as any)
+            } else if (message.message?.documentMessage) {
+              const buffer = await downloadMediaMessage(message, 'buffer', {})
+              await sock.sendMessage(groupJid, { document: buffer, caption: content, fileName: message.message.documentMessage.fileName || 'document' } as any)
+            } else {
+              await sock.sendMessage(groupJid, { text: content } as any)
             }
+            log('info', 'whatsapp', 'whatsapp_groups: sent', { group: gName, jid: groupJid })
+          } catch (err) {
+            log('error', 'whatsapp', 'whatsapp_groups: send failed', { group: gName, jid: groupJid, error: (err as Error).message })
           }
         }
         return
