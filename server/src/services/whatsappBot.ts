@@ -856,6 +856,31 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         return
       }
 
+      // ── -help ──
+      if (/^-help$/i.test(textContent.trim())) {
+        try {
+          const resp = await fetch(`${env.FRONTEND_URL}/api/help`)
+          const data = await resp.json() as { commands: Array<{ command: string; description: string; example: string }>; note: string }
+          const lines = data.commands.map((c) =>
+            `${c.command}\n  ${c.description}\n  Example: ${c.example}`
+          )
+          lines.push('')
+          lines.push(data.note)
+          await sock.sendMessage(sender, { text: lines.join('\n\n') })
+        } catch {
+          // fallback if API unreachable
+          await sock.sendMessage(sender, { text: `Available commands:
+
+get my ws groups — List your WhatsApp groups
+ws create name save gr1, gr2 — Save a group list
+ws list name: content — Send to a saved list
+ws gr1, gr2: content — Send to specific groups
+fb: content — Post to Facebook
+-help — This help` })
+        }
+        return
+      }
+
       // ── ws create name save gr1, gr2, ... ── save a named group list ──
       const createMatch = textContent.match(/^ws\s+create\s+(?:'(.+?)'\s+save\s+\[(.+?)\]|(.+?)\s+save\s+(.+))/is)
       if (createMatch) {

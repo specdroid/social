@@ -6,6 +6,7 @@ import { Automation } from './pages/Automation'
 import { WhatsApp } from './pages/WhatsApp'
 import { Facebook } from './pages/Facebook'
 import { Billing } from './pages/Billing'
+import { Help } from './pages/Help'
 
 function LoginPage() {
   const [email, setEmail] = useState('')
@@ -166,6 +167,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Layout><Billing /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/help"
+          element={
+            <ProtectedRoute>
+              <Layout><Help /></Layout>
             </ProtectedRoute>
           }
         />

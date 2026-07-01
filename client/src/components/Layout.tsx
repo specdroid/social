@@ -6,6 +6,7 @@ import {
   MessageSquare,
   Facebook,
   CreditCard,
+  HelpCircle,
   LogOut,
   Menu,
   X,
@@ -17,6 +18,7 @@ const navItems = [
   { path: '/facebook', label: 'Facebook', icon: Facebook },
   { path: '/whatsapp', label: 'WhatsApp', icon: MessageSquare },
   { path: '/billing', label: 'Billing', icon: CreditCard },
+  { path: '/help', label: 'Help', icon: HelpCircle },
 ]
 
 export function Layout({ children }: { children: ReactNode }) {
