@@ -589,21 +589,15 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
           const phone = ownPhone
           if (phone) {
             try {
-              const existing = await prisma.whatsAppSession.findFirst({
-                where: { userId: 'default' },
-              })
+              const existing = await prisma.whatsAppSession.findFirst()
               if (existing) {
                 await prisma.whatsAppSession.update({
                   where: { id: existing.id },
                   data: { isConnected: true, phone },
                 })
-              } else {
-                await prisma.whatsAppSession.create({
-                  data: { userId: 'default', phone, isConnected: true },
-                })
               }
-            } catch (err) {
-              log('error', 'whatsapp', 'facebook_feed: failed to update session isConnected', { error: (err as Error).message })
+            } catch {
+              // session tracking is best-effort
             }
           }
         }
