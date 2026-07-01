@@ -701,7 +701,7 @@ function isAllowedSender(sender: string, payload: any, isGroup = false, remoteJi
     }
 
     const contact = contactsArray.find(c =>
-      normalizeJid(c.id) === normContact || c.id === payload.contactJid
+      normalizeJid(c.id) === normContact || (c.lid && normalizeJid(c.lid) === normContact) || c.id === payload.contactJid
     )
     if (contact) {
       if (normalizeJid(contact.id) === normSender) { log('info', 'whatsapp', 'isAllowedSender: contact forward match', { contactId: contact.id }); return true }
@@ -709,7 +709,7 @@ function isAllowedSender(sender: string, payload: any, isGroup = false, remoteJi
     }
 
     const senderContact = contactsArray.find(c =>
-      normalizeJid(c.id) === normSender || (c.lid && normalizeJid(c.lid) === normSender)
+      (c.lid && normalizeJid(c.lid) === normSender) || normalizeJid(c.id) === normSender
     )
     if (senderContact) {
       if (normalizeJid(senderContact.id) === normContact) { log('info', 'whatsapp', 'isAllowedSender: reverse match', { contactId: senderContact.id }); return true }
@@ -734,7 +734,7 @@ function isAllowedSender(sender: string, payload: any, isGroup = false, remoteJi
     }
 
     const senderEntry = contactsArray.find(c =>
-      normalizeJid(c.id) === normalizedSender || (c.lid && normalizeJid(c.lid) === normalizedSender)
+      (c.lid && normalizeJid(c.lid) === normalizedSender) || normalizeJid(c.id) === normalizedSender
     )
     log('info', 'whatsapp', 'isAllowedSender: senderEntry lookup', { found: !!senderEntry, entry: senderEntry ? { id: senderEntry.id, lid: senderEntry.lid, phoneNumber: senderEntry.phoneNumber } : null })
     if (senderEntry) {
