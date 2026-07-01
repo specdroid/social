@@ -24,7 +24,6 @@ model User {
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   facebookPages        FacebookPage[]
-  facebookUser         FacebookUser?
   instagramAccounts    InstagramAccount[]
   scheduledPosts       ScheduledPost[]
   automationRules      AutomationRule[]
@@ -52,17 +51,6 @@ model FacebookPage {
   webhookActive Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-}
-
-model FacebookUser {
-  id          String   @id @default(cuid())
-  userId      String   @unique
-  user        User     @relation(fields: [userId], references: [id])
-  fbUserId    String   @unique
-  name        String?
-  accessToken String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 }
 
 model InstagramAccount {
@@ -107,7 +95,6 @@ model ScheduledPost {
   userId       String
   user         User      @relation(fields: [userId], references: [id])
   platform     String
-  target       String    @default("page")
   content      String
   mediaUrls    String?
   scheduledAt  DateTime

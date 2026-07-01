@@ -4,12 +4,9 @@ import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import { AppError } from '../middleware/errorHandler'
 import { log } from '../utils/logger'
-import { resolveUserInfo } from '../services/metaGraph'
 
 const router = Router()
 const prisma = new PrismaClient()
-
-// ── Pages CRUD ─────────────────────────────────────────────────────────────
 
 router.get('/pages', requireAuth, async (req: AuthRequest, res: Response) => {
   const pages = await prisma.facebookPage.findMany({
@@ -72,57 +69,6 @@ router.post('/subscribe', requireAuth, async (req: AuthRequest, res: Response) =
 
   log('info', 'meta_api', 'Page subscribed to webhooks', { pageId })
   res.json({ success: true, data })
-})
-
-// ── Facebook User (Personal Account) ──────────────────────────────────────
-
-router.post('/user', requireAuth, async (req: AuthRequest, res: Response) => {
-  const { accessToken } = req.body
-  if (!accessToken) throw new AppError(400, 'accessToken required')
-
-  const userInfo = await resolveUserInfo(accessToken) as { id: string; name: string }
-
-  const existing = await prisma.facebookUser.findUnique({
-    where: { userId: req.userId! },
-  })
-
-  if (existing) {
-    await prisma.facebookUser.update({
-      where: { id: existing.id },
-      data: { fbUserId: userInfo.id, name: userInfo.name, accessToken },
-    })
-  } else {
-    await prisma.facebookUser.create({
-      data: {
-        userId: req.userId!,
-        fbUserId: userInfo.id,
-        name: userInfo.name,
-        accessToken,
-      },
-    })
-  }
-
-  log('info', 'meta_api', 'Facebook user saved', { fbUserId: userInfo.id, name: userInfo.name })
-  res.json({ ok: true, user: { id: userInfo.id, name: userInfo.name } })
-})
-
-router.get('/user', requireAuth, async (req: AuthRequest, res: Response) => {
-  const fbUser = await prisma.facebookUser.findUnique({
-    where: { userId: req.userId! },
-    select: { id: true, fbUserId: true, name: true, createdAt: true },
-  })
-  res.json({ user: fbUser || null })
-})
-
-router.delete('/user', requireAuth, async (req: AuthRequest, res: Response) => {
-  const fbUser = await prisma.facebookUser.findUnique({
-    where: { userId: req.userId! },
-  })
-  if (!fbUser) throw new AppError(404, 'Facebook account not connected')
-
-  await prisma.facebookUser.delete({ where: { id: fbUser.id } })
-  log('info', 'meta_api', 'Facebook user account disconnected', { fbUserId: fbUser.fbUserId })
-  res.json({ ok: true })
 })
 
 export default router

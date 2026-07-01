@@ -19,7 +19,6 @@ interface AutomationRule {
 interface ScheduledPost {
   id: string
   platform: string
-  target: string
   content: string
   mediaUrls: string | null
   scheduledAt: string
@@ -59,7 +58,6 @@ export function AutomationRules() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const [postForm, setPostForm] = useState({
     platform: 'facebook',
-    target: 'page',
     content: '',
     scheduledAt: '',
   })
@@ -298,7 +296,7 @@ export function AutomationRules() {
       }
       setShowPostForm(false)
       setEditingPost(null)
-      setPostForm({ platform: 'facebook', target: 'page', content: '', scheduledAt: '' })
+      setPostForm({ platform: 'facebook', content: '', scheduledAt: '' })
       await loadData()
     } catch {
       // handle error
@@ -311,7 +309,6 @@ export function AutomationRules() {
     const localISO = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
     setPostForm({
       platform: post.platform,
-      target: post.target || 'page',
       content: post.content,
       scheduledAt: localISO,
     })
@@ -502,7 +499,7 @@ export function AutomationRules() {
             {isFacebookFeed && (
               <div className="md:col-span-2">
                 <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg px-4 py-3 text-sm text-blue-400">
-                  When you send a message to your own WhatsApp number, it will be published to your Facebook timeline.
+                  When you send a message to your own WhatsApp number, it will be published to your connected Facebook Page.
                   Images will be posted as photos, documents as link previews.
                 </div>
               </div>
@@ -776,19 +773,6 @@ export function AutomationRules() {
                 <option value="instagram">Instagram</option>
               </select>
             </div>
-            {postForm.platform === 'facebook' && (
-              <div>
-                <label className="block text-sm text-zinc-400 mb-1">Target</label>
-                <select
-                  value={postForm.target}
-                  onChange={(e) => setPostForm({ ...postForm, target: e.target.value })}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 text-sm focus:outline-none focus:border-zinc-500"
-                >
-                  <option value="page">Page</option>
-                  <option value="user">Personal Timeline</option>
-                </select>
-              </div>
-            )}
             <div>
               <label className="block text-sm text-zinc-400 mb-1">Content</label>
               <textarea
@@ -817,7 +801,7 @@ export function AutomationRules() {
               {loading ? 'Saving...' : editingPost ? 'Update' : 'Schedule'}
             </button>
             <button
-              onClick={() => { setShowPostForm(false); setEditingPost(null); setPostForm({ platform: 'facebook', target: 'page', content: '', scheduledAt: '' }) }}
+              onClick={() => { setShowPostForm(false); setEditingPost(null); setPostForm({ platform: 'facebook', content: '', scheduledAt: '' }) }}
               className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg text-sm hover:bg-zinc-700 transition-colors"
             >
               Cancel
@@ -833,7 +817,6 @@ export function AutomationRules() {
               <tr className="border-b border-zinc-800">
                 <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Content</th>
                 <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Platform</th>
-                <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Target</th>
                 <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Scheduled</th>
                 <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Status</th>
                 <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Actions</th>
@@ -842,7 +825,7 @@ export function AutomationRules() {
             <tbody>
               {posts.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">
+                  <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
                     No scheduled posts
                   </td>
                 </tr>
@@ -851,7 +834,6 @@ export function AutomationRules() {
                 <tr key={post.id} className="border-b border-zinc-800/50">
                   <td className="px-4 py-3 text-zinc-50 max-w-xs truncate">{post.content}</td>
                   <td className="px-4 py-3 text-zinc-400 capitalize whitespace-nowrap">{post.platform}</td>
-                  <td className="px-4 py-3 text-zinc-400 capitalize whitespace-nowrap">{post.target || 'page'}</td>
                   <td className="px-4 py-3 text-zinc-400 whitespace-nowrap">
                     {new Date(post.scheduledAt).toLocaleString()}
                   </td>

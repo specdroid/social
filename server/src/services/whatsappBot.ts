@@ -15,7 +15,7 @@ import { SocksProxyAgent } from 'socks-proxy-agent'
 import { log } from '../utils/logger'
 import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
-import { publishUserFeed, publishUserPhoto } from './metaGraph'
+import { publishPost } from './metaGraph'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -853,8 +853,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         try { payload = JSON.parse(rule.actionPayload) } catch { payload = {} }
         if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender)) continue
 
-        const fbUser = await prisma.facebookUser.findUnique({ where: { userId: rule.userId } })
-        if (!fbUser) continue
+        const fbPage = await prisma.facebookPage.findFirst({ where: { userId: rule.userId } })
+        if (!fbPage) continue
 
         try {
           const imageMsg = message.message?.imageMessage
@@ -865,17 +865,17 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
             fs.writeFileSync(filePath, buffer as Buffer)
             const caption = imageMsg.caption || textContent || ''
             const publicUrl = `${env.FRONTEND_URL.replace(/:\d+$/, '')}:3001/uploads/${fileName}`
-            await publishUserPhoto(fbUser.fbUserId, publicUrl, caption, fbUser.accessToken)
+            await publishPost(fbPage.pageId, caption, [publicUrl], fbPage.accessToken)
           } else {
             const docMsg = message.message?.documentMessage
             if (docMsg) {
               const caption = docMsg.caption || textContent
-              await publishUserFeed(fbUser.fbUserId, `${caption}\n\n${docMsg.fileName || 'document'}`, null, fbUser.accessToken)
+              await publishPost(fbPage.pageId, `${caption}\n\n${docMsg.fileName || 'document'}`, null, fbPage.accessToken)
             } else if (textContent) {
-              await publishUserFeed(fbUser.fbUserId, textContent, null, fbUser.accessToken)
+              await publishPost(fbPage.pageId, textContent, null, fbPage.accessToken)
             }
           }
-          log('info', 'whatsapp', 'facebook_feed: post sent', { ruleId: rule.id })
+          log('info', 'whatsapp', 'facebook_feed: post sent', { ruleId: rule.id, pageId: fbPage.pageId })
         } catch (err) {
           log('error', 'whatsapp', 'facebook_feed: post failed', { ruleId: rule.id, error: (err as Error).message })
         }

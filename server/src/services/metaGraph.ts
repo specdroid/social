@@ -122,29 +122,4 @@ export async function publishPost(
   return graphRequest(`/${pageId}/feed`, { method: 'POST', body, accessToken })
 }
 
-export async function resolveUserInfo(accessToken: string): Promise<{ id: string; name: string }> {
-  const body = new URLSearchParams({ access_token: accessToken })
-  return graphRequest('/me', { method: 'GET', body, accessToken }) as Promise<{ id: string; name: string }>
-}
 
-// ── User Feed Publishing ───────────────────────────────────────────────────
-
-export async function publishUserFeed(
-  fbUserId: string,
-  content: string,
-  mediaUrls: string[] | null,
-  accessToken: string
-): Promise<unknown> {
-  const body = new URLSearchParams({ message: content, access_token: accessToken })
-  return graphRequest(`/${fbUserId}/feed`, { method: 'POST', body, accessToken })
-}
-
-export async function publishUserPhoto(
-  fbUserId: string,
-  mediaUrl: string,
-  caption: string,
-  accessToken: string
-): Promise<unknown> {
-  const body = new URLSearchParams({ url: mediaUrl, caption, access_token: accessToken })
-  return graphRequest(`/${fbUserId}/photos`, { method: 'POST', body, accessToken })
-}
