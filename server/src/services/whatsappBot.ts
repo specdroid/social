@@ -846,6 +846,22 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       const normSender = normalizeJid(sender)
       if (normSender !== ownPhone && normSender !== ownLid) return
 
+      const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
+      const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter(Boolean)
+
+      // ── get my ws groups ──
+      if (/^get my ws groups$/i.test(textContent.trim())) {
+        const lines: string[] = []
+        for (const [jid, meta] of Object.entries(allGroups)) {
+          const m = meta as any
+          const isAdmin = m.participants?.some((p: any) => myJids.includes(normalizeJid(p.id)) && p.admin)
+          const role = isAdmin ? '(admin)' : ''
+          lines.push(`${m.subject} ${role}`)
+        }
+        await sock.sendMessage(sender, { text: lines.length ? lines.join('\n') : 'No groups found' })
+        return
+      }
+
       // ── ws group1, group2: content ── forward to WhatsApp group chats ──
       const wsMatch = textContent.match(/^ws\s+(.+?):\s*(.*)/is)
       if (wsMatch) {
@@ -854,10 +870,9 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
         if (groupNames.length === 0 || (!content && !hasMedia)) return
 
-        const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
+        const results: string[] = []
 
         for (const gName of groupNames) {
-          const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter(Boolean)
           const waGroup = Object.entries(allGroups).find(([, meta]) => {
             const subject = (meta as any).subject?.toLowerCase() || ''
             if (subject !== gName) return false
@@ -866,6 +881,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
             )
           })
           if (!waGroup) {
+            results.push(`❌ ${gName}: not found or not admin`)
             log('warn', 'whatsapp', 'whatsapp_groups: group not found or not admin', { gName })
             continue
           }
@@ -881,11 +897,14 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
             } else {
               await sock.sendMessage(groupJid, { text: content } as any)
             }
+            results.push(`✅ ${gName}`)
             log('info', 'whatsapp', 'whatsapp_groups: sent', { group: gName, jid: groupJid })
           } catch (err) {
+            results.push(`❌ ${gName}: ${(err as Error).message}`)
             log('error', 'whatsapp', 'whatsapp_groups: send failed', { group: gName, jid: groupJid, error: (err as Error).message })
           }
         }
+        await sock.sendMessage(sender, { text: results.join('\n') })
         return
       }
 
@@ -896,7 +915,11 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       if (!fbContent && !hasMedia) return
 
       const fbPage = await prisma.facebookPage.findFirst()
-      if (!fbPage) { log('warn', 'whatsapp', 'facebook_feed: no Facebook page connected'); return }
+      if (!fbPage) {
+        await sock.sendMessage(sender, { text: '❌ No Facebook page connected' })
+        log('warn', 'whatsapp', 'facebook_feed: no Facebook page connected')
+        return
+      }
 
       try {
         const imageMsg = message.message?.imageMessage
@@ -924,11 +947,13 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         await prisma.facebookPostLog.create({
           data: { userId: fbPage.userId, pageId: fbPage.pageId, content, mediaUrls: mediaUrls ? JSON.stringify(mediaUrls) : null, status: 'success' },
         })
+        await sock.sendMessage(sender, { text: `✅ Posted to ${fbPage.pageName || fbPage.pageId}\n${content.slice(0, 200)}` })
         log('info', 'whatsapp', 'facebook_feed: post sent', { pageId: fbPage.pageId })
       } catch (err) {
         await prisma.facebookPostLog.create({
           data: { userId: fbPage.userId, pageId: fbPage.pageId, content: fbContent || '', status: 'failed', error: (err as Error).message },
         })
+        await sock.sendMessage(sender, { text: `❌ Post failed: ${(err as Error).message}` })
         log('error', 'whatsapp', 'facebook_feed: post failed', { error: (err as Error).message })
       }
       return
