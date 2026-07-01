@@ -68,6 +68,16 @@ export function createApp(): express.Application {
           example: 'fb: Hello Facebook!',
         },
         {
+          command: 'get ws group lists',
+          description: 'Show all saved group list names.',
+          example: 'get ws group lists',
+        },
+        {
+          command: 'get ws group lists content',
+          description: 'Show all saved group lists with their groups.',
+          example: 'get ws group lists content',
+        },
+        {
           command: '-help',
           description: 'Show this help message.',
           example: '-help',

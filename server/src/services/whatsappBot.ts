@@ -916,6 +916,14 @@ _Example:_ ws my group: Hello!
 Post to your Facebook page
 _Example:_ fb: Hello Facebook!
 
+🔹 *get ws group lists*
+Show all saved group list names
+_Example:_ get ws group lists
+
+🔹 *get ws group lists content*
+Show all saved group lists with their groups
+_Example:_ get ws group lists content
+
 🔹 *-help*
 Show this help
 _Example:_ -help
