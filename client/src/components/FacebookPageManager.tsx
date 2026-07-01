@@ -29,6 +29,20 @@ export function FacebookPageManager() {
   const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [postLogs, setPostLogs] = useState<PostLog[]>([])
   const [showLogs, setShowLogs] = useState(false)
+  const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set())
+
+  function toggleLog(id: string) {
+    setSelectedLogs((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    if (selectedLogs.size === postLogs.length) setSelectedLogs(new Set())
+    else setSelectedLogs(new Set(postLogs.map((l) => l.id)))
+  }
 
   const APP_ID = '1637065514060728'
   const TOOL_URL = `https://developers.facebook.com/apps/${APP_ID}/dashboard/`
@@ -301,41 +315,77 @@ export function FacebookPageManager() {
             Post History ({postLogs.length})
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showLogs ? 'rotate-180' : ''}`} />
           </button>
-          {postLogs.length > 0 && (
-            <button
-              onClick={async () => {
-                await del('/api/facebook/post-logs')
-                setPostLogs([])
-              }}
-              className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
-            >
-              Clear History
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {postLogs.length > 0 && (
+              <button
+                onClick={async () => {
+                  await del('/api/facebook/post-logs')
+                  setPostLogs([])
+                  setSelectedLogs(new Set())
+                }}
+                className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
         </div>
 
         {showLogs && (
-          <div className="mt-4 space-y-2">
-            {postLogs.length === 0 && (
-              <p className="text-xs text-zinc-500 text-center py-4">No posts yet. Send a message to yourself on WhatsApp to trigger a Facebook post.</p>
-            )}
-            {postLogs.map((log) => (
-              <div key={log.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-zinc-50 break-words">{log.content}</p>
-                    {log.mediaUrls && (
-                      <p className="text-xs text-zinc-500 mt-1 truncate">Media: {JSON.parse(log.mediaUrls).join(', ')}</p>
-                    )}
-                    {log.error && <p className="text-xs text-red-400 mt-1">{log.error}</p>}
-                  </div>
-                  <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full ${log.status === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                    {log.status}
-                  </span>
-                </div>
-                <p className="text-[11px] text-zinc-600 mt-1">{new Date(log.createdAt).toLocaleString()}</p>
+          <div className="mt-4">
+            {postLogs.length > 0 && (
+              <div className="flex items-center gap-3 mb-3 px-1">
+                <input
+                  type="checkbox"
+                  checked={postLogs.length > 0 && selectedLogs.size === postLogs.length}
+                  onChange={toggleAll}
+                  className="accent-blue-500"
+                />
+                <span className="text-xs text-zinc-500">{selectedLogs.size} selected</span>
+                {selectedLogs.size > 0 && (
+                  <button
+                    onClick={async () => {
+                      await post('/api/facebook/post-logs/delete', { ids: Array.from(selectedLogs) })
+                      setPostLogs((prev) => prev.filter((l) => !selectedLogs.has(l.id)))
+                      setSelectedLogs(new Set())
+                    }}
+                    className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    Delete Selected
+                  </button>
+                )}
               </div>
-            ))}
+            )}
+            <div className="space-y-2">
+              {postLogs.length === 0 && (
+                <p className="text-xs text-zinc-500 text-center py-4">No posts yet. Send a message to yourself on WhatsApp to trigger a Facebook post.</p>
+              )}
+              {postLogs.map((log) => (
+                <div key={log.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedLogs.has(log.id)}
+                    onChange={() => toggleLog(log.id)}
+                    className="mt-1 accent-blue-500 shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-zinc-50 break-words">{log.content}</p>
+                        {log.mediaUrls && (
+                          <p className="text-xs text-zinc-500 mt-1 truncate">Media: {JSON.parse(log.mediaUrls).join(', ')}</p>
+                        )}
+                        {log.error && <p className="text-xs text-red-400 mt-1">{log.error}</p>}
+                      </div>
+                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full ${log.status === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                        {log.status}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-600 mt-1">{new Date(log.createdAt).toLocaleString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

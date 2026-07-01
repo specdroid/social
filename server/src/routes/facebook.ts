@@ -82,8 +82,7 @@ router.get('/post-logs', requireAuth, async (req: AuthRequest, res: Response) =>
   res.json({ logs })
 })
 
-router.delete('/post-logs', requireAuth, async (req: AuthRequest, res: Response) => {
-  const logs = await prisma.facebookPostLog.findMany({ where: { userId: req.userId! } })
+async function deletePostLogs(logs: { mediaUrls: string | null }[]): Promise<void> {
   const uploadsDir = path.resolve(process.cwd(), 'uploads')
   for (const log of logs) {
     if (log.mediaUrls) {
@@ -97,7 +96,21 @@ router.delete('/post-logs', requireAuth, async (req: AuthRequest, res: Response)
       } catch {}
     }
   }
+}
+
+router.delete('/post-logs', requireAuth, async (req: AuthRequest, res: Response) => {
+  const logs = await prisma.facebookPostLog.findMany({ where: { userId: req.userId! } })
+  await deletePostLogs(logs)
   await prisma.facebookPostLog.deleteMany({ where: { userId: req.userId! } })
+  res.json({ ok: true })
+})
+
+router.post('/post-logs/delete', requireAuth, async (req: AuthRequest, res: Response) => {
+  const { ids } = req.body as { ids: string[] }
+  if (!Array.isArray(ids) || ids.length === 0) throw new AppError(400, 'ids array required')
+  const logs = await prisma.facebookPostLog.findMany({ where: { id: { in: ids }, userId: req.userId! } })
+  await deletePostLogs(logs)
+  await prisma.facebookPostLog.deleteMany({ where: { id: { in: ids }, userId: req.userId! } })
   res.json({ ok: true })
 })
 
