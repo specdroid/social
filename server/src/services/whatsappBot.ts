@@ -602,8 +602,8 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
                   data: { userId: 'default', phone, isConnected: true },
                 })
               }
-            } catch {
-              // session tracking is best-effort
+            } catch (err) {
+              log('error', 'whatsapp', 'facebook_feed: failed to update session isConnected', { error: (err as Error).message })
             }
           }
         }
@@ -897,8 +897,6 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
       const fbPage = await prisma.facebookPage.findFirst()
       if (!fbPage) { log('warn', 'whatsapp', 'facebook_feed: no Facebook page connected'); return }
-      const session = await prisma.whatsAppSession.findFirst({ where: { isConnected: true } })
-      if (!session) { log('warn', 'whatsapp', 'facebook_feed: no connected WhatsApp session'); return }
 
       try {
         const imageMsg = message.message?.imageMessage
@@ -924,12 +922,12 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         }
 
         await prisma.facebookPostLog.create({
-          data: { userId: session.userId, pageId: fbPage.pageId, content, mediaUrls: mediaUrls ? JSON.stringify(mediaUrls) : null, status: 'success' },
+          data: { userId: fbPage.userId, pageId: fbPage.pageId, content, mediaUrls: mediaUrls ? JSON.stringify(mediaUrls) : null, status: 'success' },
         })
         log('info', 'whatsapp', 'facebook_feed: post sent', { pageId: fbPage.pageId })
       } catch (err) {
         await prisma.facebookPostLog.create({
-          data: { userId: session.userId, pageId: fbPage.pageId, content: fbContent || '', status: 'failed', error: (err as Error).message },
+          data: { userId: fbPage.userId, pageId: fbPage.pageId, content: fbContent || '', status: 'failed', error: (err as Error).message },
         })
         log('error', 'whatsapp', 'facebook_feed: post failed', { error: (err as Error).message })
       }
