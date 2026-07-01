@@ -683,7 +683,8 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
 }
 
 function normalizeJid(jid: string): string {
-  return jid.split(':')[0].split('@')[0]
+  const num = jid.split(':')[0].split('@')[0]
+  return num.startsWith('961') ? num.slice(3) : num
 }
 
 function isAllowedSender(sender: string, payload: any, isGroup = false, remoteJid = ''): boolean {
