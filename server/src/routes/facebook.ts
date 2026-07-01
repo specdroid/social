@@ -71,4 +71,13 @@ router.post('/subscribe', requireAuth, async (req: AuthRequest, res: Response) =
   res.json({ success: true, data })
 })
 
+router.get('/post-logs', requireAuth, async (req: AuthRequest, res: Response) => {
+  const logs = await prisma.facebookPostLog.findMany({
+    where: { userId: req.userId! },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  })
+  res.json({ logs })
+})
+
 export default router

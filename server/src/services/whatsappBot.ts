@@ -843,7 +843,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     // ── Handle fromMe messages → facebook_feed automation ──────────────
     if (message.key.fromMe) {
-      if (normalizeJid(sender) !== ownPhone) return
+      const normSender = normalizeJid(sender)
+      if (normSender !== ownPhone && normSender !== ownLid) return
       const fbRules = await prisma.automationRule.findMany({
         where: { isActive: true, platform: 'whatsapp', actionType: 'facebook_feed' },
       })
@@ -859,25 +860,36 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
         try {
           const imageMsg = message.message?.imageMessage
+          let content = textContent
+          let mediaUrls: string[] | null = null
+
           if (imageMsg) {
             const buffer = await downloadMediaMessage(message, 'buffer', {})
             const fileName = `fb_${Date.now()}.jpg`
             const filePath = path.resolve(process.cwd(), 'uploads', fileName)
             fs.writeFileSync(filePath, buffer as Buffer)
-            const caption = imageMsg.caption || textContent || ''
-            const publicUrl = `${env.FRONTEND_URL.replace(/:\d+$/, '')}:3001/uploads/${fileName}`
-            await publishPost(fbPage.pageId, caption, [publicUrl], fbPage.accessToken)
+            content = imageMsg.caption || textContent || ''
+            mediaUrls = [`${env.FRONTEND_URL.replace(/:\d+$/, '')}:3001/uploads/${fileName}`]
+            await publishPost(fbPage.pageId, content, mediaUrls, fbPage.accessToken)
           } else {
             const docMsg = message.message?.documentMessage
             if (docMsg) {
-              const caption = docMsg.caption || textContent
-              await publishPost(fbPage.pageId, `${caption}\n\n${docMsg.fileName || 'document'}`, null, fbPage.accessToken)
+              content = `${docMsg.caption || textContent}\n\n${docMsg.fileName || 'document'}`
+              await publishPost(fbPage.pageId, content, null, fbPage.accessToken)
             } else if (textContent) {
-              await publishPost(fbPage.pageId, textContent, null, fbPage.accessToken)
+              content = textContent
+              await publishPost(fbPage.pageId, content, null, fbPage.accessToken)
             }
           }
+
+          await prisma.facebookPostLog.create({
+            data: { userId: rule.userId, pageId: fbPage.pageId, content, mediaUrls: mediaUrls ? JSON.stringify(mediaUrls) : null, status: 'success', ruleId: rule.id },
+          })
           log('info', 'whatsapp', 'facebook_feed: post sent', { ruleId: rule.id, pageId: fbPage.pageId })
         } catch (err) {
+          await prisma.facebookPostLog.create({
+            data: { userId: rule.userId, pageId: fbPage.pageId, content: textContent || '', status: 'failed', error: (err as Error).message, ruleId: rule.id },
+          })
           log('error', 'whatsapp', 'facebook_feed: post failed', { ruleId: rule.id, error: (err as Error).message })
         }
       }

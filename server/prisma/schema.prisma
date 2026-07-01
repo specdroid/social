@@ -28,7 +28,8 @@ model User {
   scheduledPosts       ScheduledPost[]
   automationRules      AutomationRule[]
   whatsappSessions     WhatsAppSession[]
-  sessions             Session[]
+   sessions             Session[]
+   facebookPostLogs     FacebookPostLog[]
 }
 
 model Session {
@@ -103,6 +104,19 @@ model ScheduledPost {
   errorMessage String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+}
+
+model FacebookPostLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  pageId      String?
+  content     String
+  mediaUrls   String?
+  status      String
+  error       String?
+  ruleId      String?
+  createdAt   DateTime @default(now())
 }
 
 model SystemLog {

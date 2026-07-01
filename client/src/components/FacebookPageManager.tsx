@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Facebook, Globe, Bell, Trash2, ExternalLink, RefreshCw, Plus, X, Check, Loader2, AlertCircle } from 'lucide-react'
+import { Facebook, Globe, Bell, Trash2, ExternalLink, RefreshCw, Plus, X, Check, Loader2, AlertCircle, History, ChevronDown } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 
 interface FacebookPage {
@@ -10,6 +10,16 @@ interface FacebookPage {
   createdAt: string
 }
 
+interface PostLog {
+  id: string
+  content: string
+  mediaUrls: string | null
+  status: string
+  error: string | null
+  ruleId: string | null
+  createdAt: string
+}
+
 export function FacebookPageManager() {
   const { get, post, del, loading } = useApi()
   const [pages, setPages] = useState<FacebookPage[]>([])
@@ -17,6 +27,8 @@ export function FacebookPageManager() {
   const [form, setForm] = useState({ pageId: '', pageName: '', accessToken: '' })
   const [subscribing, setSubscribing] = useState<string | null>(null)
   const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [postLogs, setPostLogs] = useState<PostLog[]>([])
+  const [showLogs, setShowLogs] = useState(false)
 
   const APP_ID = '1637065514060728'
   const TOOL_URL = `https://developers.facebook.com/apps/${APP_ID}/dashboard/`
@@ -24,6 +36,7 @@ export function FacebookPageManager() {
 
   useEffect(() => {
     loadPages()
+    loadPostLogs()
   }, [])
 
   async function loadPages() {
@@ -71,6 +84,13 @@ export function FacebookPageManager() {
     }
     setSubscribing(null)
     setTimeout(() => setActionMsg(null), 4000)
+  }
+
+  async function loadPostLogs() {
+    try {
+      const data = await get<{ logs: PostLog[] }>('/api/facebook/post-logs')
+      setPostLogs(data.logs || [])
+    } catch {}
   }
 
   const daysSince = (dateStr: string) => {
@@ -266,6 +286,43 @@ export function FacebookPageManager() {
         {loading && pages.length === 0 && (
           <div className="flex items-center justify-center h-24">
             <Loader2 className="w-5 h-5 text-zinc-400 animate-spin" />
+          </div>
+        )}
+      </div>
+
+      {/* Post History */}
+      <div className="border-t border-zinc-800 pt-6">
+        <button
+          onClick={() => { setShowLogs(!showLogs); if (!showLogs) loadPostLogs() }}
+          className="flex items-center gap-2 text-zinc-400 hover:text-zinc-50 transition-colors text-sm"
+        >
+          <History className="w-4 h-4" />
+          Post History ({postLogs.length})
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showLogs ? 'rotate-180' : ''}`} />
+        </button>
+
+        {showLogs && (
+          <div className="mt-4 space-y-2">
+            {postLogs.length === 0 && (
+              <p className="text-xs text-zinc-500 text-center py-4">No posts yet. Send a message to yourself on WhatsApp to trigger a Facebook post.</p>
+            )}
+            {postLogs.map((log) => (
+              <div key={log.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-zinc-50 break-words">{log.content}</p>
+                    {log.mediaUrls && (
+                      <p className="text-xs text-zinc-500 mt-1 truncate">Media: {JSON.parse(log.mediaUrls).join(', ')}</p>
+                    )}
+                    {log.error && <p className="text-xs text-red-400 mt-1">{log.error}</p>}
+                  </div>
+                  <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full ${log.status === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                    {log.status}
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-600 mt-1">{new Date(log.createdAt).toLocaleString()}</p>
+              </div>
+            ))}
           </div>
         )}
       </div>
