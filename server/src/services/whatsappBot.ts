@@ -861,22 +861,46 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         try {
           const resp = await fetch(`${env.FRONTEND_URL}/api/help`)
           const data = await resp.json() as { commands: Array<{ command: string; description: string; example: string }>; note: string }
-          const lines = data.commands.map((c) =>
-            `${c.command}\n  ${c.description}\n  Example: ${c.example}`
-          )
-          lines.push('')
-          lines.push(data.note)
+          const lines: string[] = [
+            '📋 *Commands*\n',
+          ]
+          for (const c of data.commands) {
+            lines.push(
+              `🔹 *${c.command}*\n${c.description}\n_Example:_ ${c.example}`
+            )
+          }
+          lines.push(`\n💡 ${data.note}`)
           await sock.sendMessage(sender, { text: lines.join('\n\n') })
         } catch {
-          // fallback if API unreachable
-          await sock.sendMessage(sender, { text: `Available commands:
+          await sock.sendMessage(sender, {
+            text: `📋 *Available Commands*
 
-get my ws groups — List your WhatsApp groups
-ws create name save gr1, gr2 — Save a group list
-ws list name: content — Send to a saved list
-ws gr1, gr2: content — Send to specific groups
-fb: content — Post to Facebook
--help — This help` })
+🔹 *get my ws groups*
+List your WhatsApp groups with admin status
+_Example:_ get my ws groups
+
+🔹 *ws create name save gr1, gr2*
+Save a named group list
+_Example:_ ws create schools save exams, grade 7 a
+
+🔹 *ws list name: content*
+Send to groups in a saved list
+_Example:_ ws list schools: Hello!
+
+🔹 *ws gr1, gr2: content*
+Send directly to specific groups (admin required)
+_Example:_ ws my group: Hello!
+
+🔹 *fb: content*
+Post to your Facebook page
+_Example:_ fb: Hello Facebook!
+
+🔹 *-help*
+Show this help
+_Example:_ -help
+
+💡 Send commands as self-chat messages (message yourself)`,
+          })
         }
         return
       }
