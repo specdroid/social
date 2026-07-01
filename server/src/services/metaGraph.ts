@@ -110,12 +110,8 @@ export async function publishPost(
   accessToken: string
 ): Promise<unknown> {
   if (mediaUrls && mediaUrls.length > 0) {
-    const body = new URLSearchParams({
-      message: content,
-      attached_media: JSON.stringify(mediaUrls.map((url) => ({ media_fbid: url }))),
-      access_token: accessToken,
-    })
-    return graphRequest(`/${pageId}/feed`, { method: 'POST', body, accessToken })
+    const body = new URLSearchParams({ url: mediaUrls[0], caption: content, access_token: accessToken })
+    return graphRequest(`/${pageId}/photos`, { method: 'POST', body, accessToken })
   }
 
   const body = new URLSearchParams({ message: content, access_token: accessToken })
