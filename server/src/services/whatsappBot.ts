@@ -843,6 +843,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     // ── Handle fromMe messages → facebook_feed automation ──────────────
     if (message.key.fromMe) {
+      if (normalizeJid(sender) !== ownPhone) return
       const fbRules = await prisma.automationRule.findMany({
         where: { isActive: true, platform: 'whatsapp', actionType: 'facebook_feed' },
       })
