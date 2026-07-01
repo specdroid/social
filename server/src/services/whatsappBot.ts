@@ -895,10 +895,10 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
       if (!fbContent && !hasMedia) return
 
+      const fbPage = await prisma.facebookPage.findFirst()
+      if (!fbPage) { log('warn', 'whatsapp', 'facebook_feed: no Facebook page connected'); return }
       const session = await prisma.whatsAppSession.findFirst({ where: { isConnected: true } })
-      if (!session) return
-      const fbPage = await prisma.facebookPage.findFirst({ where: { userId: session.userId } })
-      if (!fbPage) return
+      if (!session) { log('warn', 'whatsapp', 'facebook_feed: no connected WhatsApp session'); return }
 
       try {
         const imageMsg = message.message?.imageMessage
