@@ -856,6 +856,27 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         return
       }
 
+      // ── get ws group lists content / get ws group lists ──
+      if (/^get ws group lists( content)?$/i.test(textContent.trim())) {
+        const showContent = /content$/i.test(textContent.trim())
+        const lists = await prisma.savedGroupList.findMany({ orderBy: { createdAt: 'desc' } })
+        if (lists.length === 0) {
+          await sock.sendMessage(sender, { text: 'No saved group lists.' })
+          return
+        }
+        const lines: string[] = []
+        for (const l of lists) {
+          const groups: string[] = JSON.parse(l.groups)
+          if (showContent) {
+            lines.push(`📁 *${l.name}*\n  ${groups.join('\n  ')}`)
+          } else {
+            lines.push(`📁 ${l.name}`)
+          }
+        }
+        await sock.sendMessage(sender, { text: lines.join('\n\n') })
+        return
+      }
+
       // ── -help ──
       if (/^-help$/i.test(textContent.trim())) {
         try {
