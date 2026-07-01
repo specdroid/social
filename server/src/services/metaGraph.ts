@@ -129,7 +129,7 @@ export function getLoginUrl(redirectUri: string, state: string): string {
   const params = new URLSearchParams({
     client_id: env.META_APP_ID,
     redirect_uri: redirectUri,
-    scope: 'public_profile,publish_pages',
+    scope: 'publish_pages',
     response_type: 'code',
     state,
   })
