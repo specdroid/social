@@ -119,6 +119,14 @@ model FacebookPostLog {
   createdAt   DateTime @default(now())
 }
 
+model SavedGroupList {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  groups    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model SystemLog {
   id        String   @id @default(cuid())
   level     String

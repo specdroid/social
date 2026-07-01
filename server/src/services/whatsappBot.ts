@@ -856,6 +856,74 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         return
       }
 
+      // ── ws create 'name' save [gr1, gr2, ...] ── save a named group list ──
+      const createMatch = textContent.match(/^ws\s+create\s+'(.+?)'\s+save\s+\[(.+?)\]/is)
+      if (createMatch) {
+        const listName = createMatch[1].trim()
+        const groupNames = createMatch[2].split(',').map((s) => s.trim()).filter(Boolean)
+        if (!listName || groupNames.length === 0) return
+        try {
+          await prisma.savedGroupList.upsert({
+            where: { name: listName },
+            update: { groups: JSON.stringify(groupNames) },
+            create: { name: listName, groups: JSON.stringify(groupNames) },
+          })
+          await sock.sendMessage(sender, { text: `✅ Saved list "${listName}" (${groupNames.length} groups)\n${groupNames.join(', ')}` })
+        } catch (err) {
+          await sock.sendMessage(sender, { text: `❌ Failed to save list: ${(err as Error).message}` })
+        }
+        return
+      }
+
+      // ── ws list name: content ── send to groups in a saved list ──
+      const listMatch = textContent.match(/^ws\s+list\s+(.+?):\s*(.*)/is)
+      if (listMatch) {
+        const listName = listMatch[1].trim()
+        const content = listMatch[2] || ''
+        const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
+        if (!content && !hasMedia) return
+
+        const savedList = await prisma.savedGroupList.findUnique({ where: { name: listName } })
+        if (!savedList) {
+          await sock.sendMessage(sender, { text: `❌ List "${listName}" not found` })
+          return
+        }
+        const groupNames: string[] = JSON.parse(savedList.groups)
+        const results: string[] = []
+
+        for (const gName of groupNames.map((s) => s.toLowerCase())) {
+          const waGroup = Object.entries(allGroups).find(([, meta]) => {
+            const subject = (meta as any).subject?.toLowerCase() || ''
+            if (subject !== gName) return false
+            return (meta as any).participants?.some(
+              (p: any) => myJids.includes(normalizeJid(p.id)) && p.admin
+            )
+          })
+          if (!waGroup) {
+            results.push(`❌ ${gName}: not found or not admin`)
+            continue
+          }
+          const groupJid = waGroup[0]
+          try {
+            const imageMsg = message.message?.imageMessage
+            if (imageMsg) {
+              const buffer = await downloadMediaMessage(message, 'buffer', {})
+              await sock.sendMessage(groupJid, { image: buffer, caption: content } as any)
+            } else if (message.message?.documentMessage) {
+              const buffer = await downloadMediaMessage(message, 'buffer', {})
+              await sock.sendMessage(groupJid, { document: buffer, caption: content, fileName: message.message.documentMessage.fileName || 'document' } as any)
+            } else {
+              await sock.sendMessage(groupJid, { text: content } as any)
+            }
+            results.push(`✅ ${gName}`)
+          } catch (err) {
+            results.push(`❌ ${gName}: ${(err as Error).message}`)
+          }
+        }
+        await sock.sendMessage(sender, { text: results.join('\n') })
+        return
+      }
+
       // ── ws group1, group2: content ── forward to WhatsApp group chats ──
       const wsMatch = textContent.match(/^ws\s+(.+?):\s*(.*)/is)
       if (wsMatch) {

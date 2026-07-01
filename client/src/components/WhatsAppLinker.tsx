@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Smartphone, Link2, Unlink, Loader2, AlertCircle, Wifi, ChevronDown, ChevronUp, MessageSquare, Trash2, Users, Search, RefreshCw, Upload, FolderPlus, Check, Eye, Pencil } from 'lucide-react'
 import { useSocket } from '../hooks/useSocket'
 import { useApi } from '../hooks/useApi'
+import { SavedGroupListsPanel } from './SavedGroupListsPanel'
 
 interface ConnectionState {
   connected: boolean
@@ -912,6 +913,8 @@ export function WhatsAppLinker() {
           )}
         </div>
       </div>
+
+      {statusState === 'connected' && <SavedGroupListsPanel get={get} put={put} del={del} />}
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-md space-y-4">
         <button

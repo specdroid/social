@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
+import { PrismaClient } from '@prisma/client'
 import { getWhatsAppStatus, disconnectWhatsApp, getConnectionState, getLatestQrDataUrl, sendTestMessage, cleanupAuthFolder, clearCredentials, getContacts, clearContacts, deleteContact, resyncContacts, importVcf, getContactGroups, createContactGroup, updateContactGroup, deleteContactGroup, getImportedContacts, deleteImportedContact, clearImportedContacts, addImportedContact, getOwnProfile } from '../services/whatsappBot'
 import dns, { Resolver } from 'dns/promises'
 import net from 'net'
@@ -20,6 +21,7 @@ const vcfUpload = multer({
 })
 
 const router = Router()
+const prisma = new PrismaClient()
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
 async function resolveWithServers(host: string, servers: string[]): Promise<{ addresses?: string[]; error?: string }> {
@@ -191,6 +193,38 @@ router.post('/cleanup-auth', requireAuth, async (_req: AuthRequest, res: Respons
 router.post('/clear-credentials', requireAuth, async (_req: AuthRequest, res: Response) => {
   const result = clearCredentials()
   res.json({ ok: true, deleted: result.deleted })
+})
+
+// Saved Group Lists
+router.get('/group-lists', requireAuth, async (_req: AuthRequest, res: Response) => {
+  const lists = await prisma.savedGroupList.findMany({ orderBy: { createdAt: 'desc' } })
+  res.json({ lists: lists.map((l: Record<string, unknown>) => ({ ...l, groups: JSON.parse(l.groups as string) })) })
+})
+
+router.put('/group-lists/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+  const { name, groups } = req.body
+  if (!name || !Array.isArray(groups)) {
+    res.status(400).json({ error: 'name (string) and groups (string[]) are required' })
+    return
+  }
+  try {
+    const updated = await prisma.savedGroupList.update({
+      where: { id: String(req.params.id) },
+      data: { name: String(name), groups: JSON.stringify(groups) },
+    })
+    res.json({ list: { ...updated, groups: JSON.parse(updated.groups) } })
+  } catch {
+    res.status(404).json({ error: 'List not found' })
+  }
+})
+
+router.delete('/group-lists/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    await prisma.savedGroupList.delete({ where: { id: String(req.params.id) } })
+    res.json({ ok: true })
+  } catch {
+    res.status(404).json({ error: 'List not found' })
+  }
 })
 
 router.get('/diagnostics', async (_req: Request, res: Response) => {
