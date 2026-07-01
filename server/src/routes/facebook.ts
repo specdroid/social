@@ -4,15 +4,10 @@ import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import { AppError } from '../middleware/errorHandler'
 import { log } from '../utils/logger'
-import { env } from '../config/env'
-import { getLoginUrl, exchangeCodeForToken, exchangeForLongLivedToken, resolveUserInfo } from '../services/metaGraph'
-import crypto from 'crypto'
+import { resolveUserInfo } from '../services/metaGraph'
 
 const router = Router()
 const prisma = new PrismaClient()
-
-// In-memory OAuth state → userId mapping (cleared on use, TTL 10 min)
-const oauthStateMap = new Map<string, { userId: string; expiresAt: number }>()
 
 // ── Pages CRUD ─────────────────────────────────────────────────────────────
 
@@ -79,69 +74,36 @@ router.post('/subscribe', requireAuth, async (req: AuthRequest, res: Response) =
   res.json({ success: true, data })
 })
 
-// ── Facebook User (Personal Account) OAuth ────────────────────────────────
+// ── Facebook User (Personal Account) ──────────────────────────────────────
 
-router.get('/login', requireAuth, async (req: AuthRequest, res: Response) => {
-  const state = crypto.randomBytes(32).toString('hex')
-  oauthStateMap.set(state, { userId: req.userId!, expiresAt: Date.now() + 600_000 })
-  const url = getLoginUrl(env.META_REDIRECT_URI, state)
-  res.json({ url })
-})
+router.post('/user', requireAuth, async (req: AuthRequest, res: Response) => {
+  const { accessToken } = req.body
+  if (!accessToken) throw new AppError(400, 'accessToken required')
 
-router.get('/callback', async (req: AuthRequest, res: Response) => {
-  const { code, state: oauthState, error: oauthError } = req.query as Record<string, string>
+  const userInfo = await resolveUserInfo(accessToken) as { id: string; name: string }
 
-  if (oauthError) {
-    log('error', 'meta_api', 'Facebook OAuth error', { oauthError })
-    res.redirect(`${env.FRONTEND_URL}/facebook?error=${encodeURIComponent(oauthError)}`)
-    return
-  }
+  const existing = await prisma.facebookUser.findUnique({
+    where: { userId: req.userId! },
+  })
 
-  if (!code || !oauthState) {
-    res.redirect(`${env.FRONTEND_URL}/facebook?error=missing_params`)
-    return
-  }
-
-  const stateEntry = oauthStateMap.get(oauthState)
-  oauthStateMap.delete(oauthState)
-
-  if (!stateEntry || stateEntry.expiresAt < Date.now()) {
-    res.redirect(`${env.FRONTEND_URL}/facebook?error=invalid_or_expired_state`)
-    return
-  }
-
-  try {
-    const { access_token: shortToken } = await exchangeCodeForToken(code, env.META_REDIRECT_URI)
-    const { access_token: longToken } = await exchangeForLongLivedToken(shortToken)
-    const userInfo = await resolveUserInfo(longToken) as { id: string; name: string }
-
-    const existing = await prisma.facebookUser.findUnique({
-      where: { userId: stateEntry.userId },
+  if (existing) {
+    await prisma.facebookUser.update({
+      where: { id: existing.id },
+      data: { fbUserId: userInfo.id, name: userInfo.name, accessToken },
     })
-
-    if (existing) {
-      await prisma.facebookUser.update({
-        where: { id: existing.id },
-        data: { fbUserId: userInfo.id, name: userInfo.name, accessToken: longToken },
-      })
-      res.redirect(`${env.FRONTEND_URL}/facebook?connected=ok`)
-      return
-    }
-
+  } else {
     await prisma.facebookUser.create({
       data: {
-        userId: stateEntry.userId,
+        userId: req.userId!,
         fbUserId: userInfo.id,
         name: userInfo.name,
-        accessToken: longToken,
+        accessToken,
       },
     })
-
-    res.redirect(`${env.FRONTEND_URL}/facebook?connected=ok`)
-  } catch (err) {
-    log('error', 'meta_api', 'Facebook OAuth callback failed', { error: (err as Error).message })
-    res.redirect(`${env.FRONTEND_URL}/facebook?error=${encodeURIComponent((err as Error).message)}`)
   }
+
+  log('info', 'meta_api', 'Facebook user saved', { fbUserId: userInfo.id, name: userInfo.name })
+  res.json({ ok: true, user: { id: userInfo.id, name: userInfo.name } })
 })
 
 router.get('/user', requireAuth, async (req: AuthRequest, res: Response) => {

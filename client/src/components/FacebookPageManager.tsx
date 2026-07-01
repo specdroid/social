@@ -25,21 +25,14 @@ export function FacebookPageManager() {
   const [form, setForm] = useState({ pageId: '', pageName: '', accessToken: '' })
   const [subscribing, setSubscribing] = useState<string | null>(null)
   const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [connecting, setConnecting] = useState(false)
+  const [userToken, setUserToken] = useState('')
+  const [savingUser, setSavingUser] = useState(false)
 
   const APP_ID = '1637065514060728'
   const TOOL_URL = `https://developers.facebook.com/apps/${APP_ID}/dashboard/`
   const EXPLORER_URL = `https://developers.facebook.com/tools/explorer/?app_id=${APP_ID}`
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('connected') === 'ok') {
-      setActionMsg({ type: 'success', text: 'Facebook account connected!' })
-      window.history.replaceState({}, '', '/facebook')
-    } else if (params.get('error')) {
-      setActionMsg({ type: 'error', text: `Connection failed: ${params.get('error')}` })
-      window.history.replaceState({}, '', '/facebook')
-    }
     loadPages()
     loadFbUser()
   }, [])
@@ -62,15 +55,19 @@ export function FacebookPageManager() {
     }
   }
 
-  async function handleConnect() {
-    setConnecting(true)
+  async function handleSaveUser() {
+    if (!userToken.trim()) return
+    setSavingUser(true)
     try {
-      const { url } = await get<{ url: string }>('/api/facebook/login')
-      window.location.href = url
+      await post('/api/facebook/user', { accessToken: userToken.trim() })
+      setUserToken('')
+      setActionMsg({ type: 'success', text: 'Facebook account connected!' })
+      await loadFbUser()
     } catch {
-      setActionMsg({ type: 'error', text: 'Failed to start login' })
+      setActionMsg({ type: 'error', text: 'Failed to connect. Check that the token is valid and has publish_pages permission.' })
     }
-    setConnecting(false)
+    setSavingUser(false)
+    setTimeout(() => setActionMsg(null), 4000)
   }
 
   async function handleDisconnect() {
@@ -177,18 +174,29 @@ export function FacebookPageManager() {
             </p>
           </div>
         ) : (
-          <div className="mt-4">
-            <button
-              onClick={handleConnect}
-              disabled={connecting}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-500 transition-colors disabled:opacity-50"
-            >
-              {connecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Facebook className="w-4 h-4" />}
-              {connecting ? 'Connecting...' : 'Connect Facebook Account'}
-            </button>
-            <p className="text-xs text-zinc-500 mt-2">
-              Allows posting to your personal timeline. Requires <code className="text-zinc-400">publish_pages</code> permission — works for app admins without review.
+          <div className="mt-4 space-y-3">
+            <p className="text-xs text-zinc-400">
+              Generate a User Access Token with <code className="text-zinc-300">publish_pages</code> permission from the{' '}
+              <a href={EXPLORER_URL} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Graph API Explorer</a>,
+              select <strong className="text-zinc-300">User Token</strong>, then paste it below.
             </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={userToken}
+                onChange={(e) => setUserToken(e.target.value)}
+                placeholder="Paste User Access Token (EAA...)"
+                className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 text-sm font-mono focus:outline-none focus:border-zinc-500"
+              />
+              <button
+                onClick={handleSaveUser}
+                disabled={savingUser || !userToken.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-500 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {savingUser ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Save
+              </button>
+            </div>
           </div>
         )}
       </div>

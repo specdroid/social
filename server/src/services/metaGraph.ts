@@ -1,4 +1,3 @@
-import { env } from '../config/env'
 import { log } from '../utils/logger'
 import { addToRetryQueue } from './retryQueue'
 
@@ -121,50 +120,6 @@ export async function publishPost(
 
   const body = new URLSearchParams({ message: content, access_token: accessToken })
   return graphRequest(`/${pageId}/feed`, { method: 'POST', body, accessToken })
-}
-
-// ── Facebook Login / OAuth ─────────────────────────────────────────────────
-
-export function getLoginUrl(redirectUri: string, state: string): string {
-  const params = new URLSearchParams({
-    client_id: env.META_APP_ID,
-    redirect_uri: redirectUri,
-    scope: 'publish_pages',
-    response_type: 'code',
-    state,
-  })
-  return `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}`
-}
-
-export async function exchangeCodeForToken(
-  code: string,
-  redirectUri: string
-): Promise<{ access_token: string; expires_in: number }> {
-  const params = new URLSearchParams({
-    client_id: env.META_APP_ID,
-    client_secret: env.META_APP_SECRET,
-    redirect_uri: redirectUri,
-    code,
-  })
-  const res = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?${params.toString()}`)
-  const data: any = await res.json()
-  if (data.error) throw new Error(`Token exchange failed: ${data.error.message}`)
-  return data as { access_token: string; expires_in: number }
-}
-
-export async function exchangeForLongLivedToken(
-  shortLivedToken: string
-): Promise<{ access_token: string; expires_in: number }> {
-  const params = new URLSearchParams({
-    grant_type: 'fb_exchange_token',
-    client_id: env.META_APP_ID,
-    client_secret: env.META_APP_SECRET,
-    fb_exchange_token: shortLivedToken,
-  })
-  const res = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?${params.toString()}`)
-  const data: any = await res.json()
-  if (data.error) throw new Error(`Long-lived token exchange failed: ${data.error.message}`)
-  return data as { access_token: string; expires_in: number }
 }
 
 export async function resolveUserInfo(accessToken: string): Promise<{ id: string; name: string }> {
