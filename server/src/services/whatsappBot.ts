@@ -686,7 +686,7 @@ function normalizeJid(jid: string): string {
   return num.startsWith('961') ? num.slice(3) : num
 }
 
-function isAllowedSender(sender: string, payload: any, isGroup = false, remoteJid = ''): boolean {
+async function isAllowedSender(sock: any, sender: string, payload: any, isGroup = false, remoteJid = ''): Promise<boolean> {
   if (payload.contactJid) {
     const normSender = normalizeJid(sender)
     const normContact = normalizeJid(payload.contactJid)
@@ -739,6 +739,23 @@ function isAllowedSender(sender: string, payload: any, isGroup = false, remoteJi
     if (!isGroup && group.memberJids.some(m => normalizeJid(m) === normalizeJid(remoteJid))) {
       log('info', 'whatsapp', 'isAllowedSender: individual chat remoteJid matches member', { remoteJid })
       return true
+    }
+
+    // Resolve LID → phone number using the server-side lidMapping (always populated)
+    if (sender.endsWith('@lid')) {
+      try {
+        const resolvedPn = await (sock as any).signalRepository?.lidMapping?.getPNForLID(normalizedSender)
+        if (resolvedPn) {
+          const resolvedNorm = normalizeJid(resolvedPn)
+          log('info', 'whatsapp', 'isAllowedSender: lidMapping resolved', { normalizedSender, resolvedPn, resolvedNorm })
+          if (group.memberJids.some(m => normalizeJid(m) === resolvedNorm)) {
+            log('info', 'whatsapp', 'isAllowedSender: lidMapping member match')
+            return true
+          }
+        }
+      } catch (err) {
+        log('warn', 'whatsapp', 'isAllowedSender: lidMapping error', { error: (err as Error).message })
+      }
     }
 
     const senderEntry = contactsArray.find(c =>
@@ -836,7 +853,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           }
           log('info', 'whatsapp', 'Text menu: rule payload', { ruleId: rule.id, interactive: payload.interactive, optionsCount: payload.options?.length })
           if (!payload.interactive || !payload.options) continue
-          if (!isAllowedSender(actualSender, payload, sender.endsWith('@g.us'), sender)) {
+          if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender)) {
             log('info', 'whatsapp', 'Text menu: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
             continue
           }
@@ -871,7 +888,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           log('info', 'whatsapp', 'Follow-up: not interactive', { ruleId: rule.id })
           continue
         }
-        if (!isAllowedSender(actualSender, payload, sender.endsWith('@g.us'), sender)) {
+        if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender)) {
           log('info', 'whatsapp', 'Follow-up: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
           continue
         }
@@ -926,7 +943,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         payload = { replyText: rule.actionPayload }
       }
 
-      if (!isAllowedSender(actualSender, payload, sender.endsWith('@g.us'), sender)) {
+      if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender)) {
         log('info', 'whatsapp', 'Main: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
         continue
       }
