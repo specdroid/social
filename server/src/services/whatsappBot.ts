@@ -856,11 +856,12 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         return
       }
 
-      // ── ws create 'name' save [gr1, gr2, ...] ── save a named group list ──
-      const createMatch = textContent.match(/^ws\s+create\s+'(.+?)'\s+save\s+\[(.+?)\]/is)
+      // ── ws create name save gr1, gr2, ... ── save a named group list ──
+      const createMatch = textContent.match(/^ws\s+create\s+(?:'(.+?)'\s+save\s+\[(.+?)\]|(.+?)\s+save\s+(.+))/is)
       if (createMatch) {
-        const listName = createMatch[1].trim()
-        const groupNames = createMatch[2].split(',').map((s) => s.trim()).filter(Boolean)
+        const listName = (createMatch[1] || createMatch[3]).trim()
+        const groupsRaw = (createMatch[2] || createMatch[4])
+        const groupNames = groupsRaw.split(',').map((s) => s.trim()).filter(Boolean)
         if (!listName || groupNames.length === 0) return
         try {
           await prisma.savedGroupList.upsert({
@@ -967,6 +968,12 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           }
         }
         await sock.sendMessage(sender, { text: results.join('\n') })
+        return
+      }
+
+      // ── catch unrecognized ws commands ──
+      if (/^ws\s+/i.test(textContent)) {
+        await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nget my ws groups' })
         return
       }
 
