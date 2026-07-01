@@ -725,7 +725,7 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
     const group = contactGroups.find(g => g.id === payload.contactGroupId)
     if (!group) { log('info', 'whatsapp', 'isAllowedSender: group not found', { groupId: payload.contactGroupId }); return false }
     const normalizedSender = normalizeJid(sender)
-    log('info', 'whatsapp', 'isAllowedSender contactGroupId', { sender, normalizedSender, groupId: payload.contactGroupId, memberJids: group.memberJids, ownPhone, ownLid })
+    log('info', 'whatsapp', 'isAllowedSender contactGroupId', { sender, normalizedSender, groupId: payload.contactGroupId, memberJids: group.memberJids, ownPhone, ownLid, contactsCount: contactsArray.length })
 
     if (group.memberJids.some(m => normalizeJid(m) === normalizedSender)) { log('info', 'whatsapp', 'isAllowedSender: direct group member match'); return true }
 
@@ -741,20 +741,38 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
       return true
     }
 
-    // Resolve LID → phone number using the server-side lidMapping (always populated)
+    // Resolve LID ↔ PN using the server-side lidMapping (can trigger USync query)
     if (sender.endsWith('@lid')) {
       try {
+        // Fast local lookup: try to get PN for the sender's LID
         const resolvedPn = await (sock as any).signalRepository?.lidMapping?.getPNForLID(normalizedSender)
         if (resolvedPn) {
           const resolvedNorm = normalizeJid(resolvedPn)
-          log('info', 'whatsapp', 'isAllowedSender: lidMapping resolved', { normalizedSender, resolvedPn, resolvedNorm })
+          log('info', 'whatsapp', 'isAllowedSender: lidMapping getPNForLID resolved', { normalizedSender, resolvedPn, resolvedNorm })
           if (group.memberJids.some(m => normalizeJid(m) === resolvedNorm)) {
-            log('info', 'whatsapp', 'isAllowedSender: lidMapping member match')
+            log('info', 'whatsapp', 'isAllowedSender: lidMapping member PN match')
             return true
           }
         }
       } catch (err) {
-        log('warn', 'whatsapp', 'isAllowedSender: lidMapping error', { error: (err as Error).message })
+        log('warn', 'whatsapp', 'isAllowedSender: lidMapping getPNForLID error', { error: (err as Error).message })
+      }
+      // If local lookup failed, try iterating members with getLIDForPN (can trigger USync query)
+      try {
+        for (const memberJid of group.memberJids) {
+          if (!memberJid.endsWith('@s.whatsapp.net') && !memberJid.endsWith('@lid')) continue
+          const memberLid = await (sock as any).signalRepository?.lidMapping?.getLIDForPN(memberJid)
+          if (memberLid) {
+            const normalizedMemberLid = normalizeJid(memberLid)
+            log('info', 'whatsapp', 'isAllowedSender: lidMapping getLIDForPN', { memberJid, memberLid, normalizedMemberLid, normalizedSender })
+            if (normalizedMemberLid === normalizedSender) {
+              log('info', 'whatsapp', 'isAllowedSender: lidMapping member LID match')
+              return true
+            }
+          }
+        }
+      } catch (err) {
+        log('warn', 'whatsapp', 'isAllowedSender: lidMapping getLIDForPN error', { error: (err as Error).message })
       }
     }
 
