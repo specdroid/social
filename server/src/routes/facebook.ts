@@ -1,5 +1,7 @@
 import { Router, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
+import path from 'path'
+import fs from 'fs'
 import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import { AppError } from '../middleware/errorHandler'
@@ -81,6 +83,20 @@ router.get('/post-logs', requireAuth, async (req: AuthRequest, res: Response) =>
 })
 
 router.delete('/post-logs', requireAuth, async (req: AuthRequest, res: Response) => {
+  const logs = await prisma.facebookPostLog.findMany({ where: { userId: req.userId! } })
+  const uploadsDir = path.resolve(process.cwd(), 'uploads')
+  for (const log of logs) {
+    if (log.mediaUrls) {
+      try {
+        const urls: string[] = JSON.parse(log.mediaUrls)
+        for (const url of urls) {
+          const filename = path.basename(url)
+          const filePath = path.join(uploadsDir, filename)
+          if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+        }
+      } catch {}
+    }
+  }
   await prisma.facebookPostLog.deleteMany({ where: { userId: req.userId! } })
   res.json({ ok: true })
 })
