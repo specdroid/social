@@ -80,4 +80,9 @@ router.get('/post-logs', requireAuth, async (req: AuthRequest, res: Response) =>
   res.json({ logs })
 })
 
+router.delete('/post-logs', requireAuth, async (req: AuthRequest, res: Response) => {
+  await prisma.facebookPostLog.deleteMany({ where: { userId: req.userId! } })
+  res.json({ ok: true })
+})
+
 export default router

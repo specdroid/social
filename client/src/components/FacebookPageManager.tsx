@@ -292,14 +292,27 @@ export function FacebookPageManager() {
 
       {/* Post History */}
       <div className="border-t border-zinc-800 pt-6">
-        <button
-          onClick={() => { setShowLogs(!showLogs); if (!showLogs) loadPostLogs() }}
-          className="flex items-center gap-2 text-zinc-400 hover:text-zinc-50 transition-colors text-sm"
-        >
-          <History className="w-4 h-4" />
-          Post History ({postLogs.length})
-          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showLogs ? 'rotate-180' : ''}`} />
-        </button>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => { setShowLogs(!showLogs); if (!showLogs) loadPostLogs() }}
+            className="flex items-center gap-2 text-zinc-400 hover:text-zinc-50 transition-colors text-sm"
+          >
+            <History className="w-4 h-4" />
+            Post History ({postLogs.length})
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showLogs ? 'rotate-180' : ''}`} />
+          </button>
+          {postLogs.length > 0 && (
+            <button
+              onClick={async () => {
+                await del('/api/facebook/post-logs')
+                setPostLogs([])
+              }}
+              className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+            >
+              Clear History
+            </button>
+          )}
+        </div>
 
         {showLogs && (
           <div className="mt-4 space-y-2">
