@@ -869,7 +869,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
             const filePath = path.resolve(process.cwd(), 'uploads', fileName)
             fs.writeFileSync(filePath, buffer as Buffer)
             content = imageMsg.caption || textContent || ''
-            mediaUrls = [`${env.FRONTEND_URL.replace(/:\d+$/, '')}:3001/uploads/${fileName}`]
+            mediaUrls = [`${env.FRONTEND_URL.replace(/\/$/, '')}/uploads/${fileName}`]
             await publishPost(fbPage.pageId, content, mediaUrls, fbPage.accessToken)
           } else {
             const docMsg = message.message?.documentMessage
