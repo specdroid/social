@@ -851,7 +851,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       if (wsMatch) {
         const groupNames = wsMatch[1].split(',').map((s) => s.trim().toLowerCase())
         const content = wsMatch[2] || ''
-        if (groupNames.length === 0 || !content) return
+        const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
+        if (groupNames.length === 0 || (!content && !hasMedia)) return
 
         for (const gName of groupNames) {
           const group = contactGroups.find((g) => g.name.toLowerCase() === gName)
@@ -883,7 +884,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       // ── fb: content ── post to Facebook page ──
       const fbPrefix = textContent.match(/^fb:\s*(.*)/is)
       const fbContent = fbPrefix ? fbPrefix[1] : (textContent || '')
-      if (!fbContent && !message.message?.imageMessage) return
+      const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
+      if (!fbContent && !hasMedia) return
 
       const session = await prisma.whatsAppSession.findFirst({ where: { isConnected: true } })
       if (!session) return
