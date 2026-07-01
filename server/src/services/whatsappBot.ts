@@ -565,6 +565,15 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
           ownLid = (sock.user as any)?.lid ? (sock.user as any).lid.replace(/(:\d+)?(@lid)?$/, '') : null
           log('info', 'whatsapp', 'WhatsApp connected successfully', { ownPhone, ownLid })
 
+          // Resync contacts BEFORE emitting whatsapp:ready so contacts.upsert
+          // events (which include lid ↔ phone mappings) are fully processed
+          try {
+            await (sock as any).resyncAppState(['regular', 'regular_low'], true)
+            log('info', 'whatsapp', 'Startup contacts resync completed to populate lid fields')
+          } catch (err) {
+            log('warn', 'whatsapp', 'Startup contacts resync failed', { error: (err as Error).message })
+          }
+
           emit('whatsapp:ready', { connected: true })
           emit('whatsapp:status', {
             state: 'connected',
@@ -591,16 +600,6 @@ export async function initWhatsAppBot(serverIo: SocketIOServer): Promise<void> {
               // session tracking is best-effort
             }
           }
-
-          // Populate lid field for existing contacts via async resync
-          setImmediate(async () => {
-            try {
-              await (sock as any).resyncAppState(['regular', 'regular_low'], true)
-              log('info', 'whatsapp', 'Startup contacts resync triggered to populate lid fields')
-            } catch (err) {
-              log('warn', 'whatsapp', 'Startup contacts resync failed', { error: (err as Error).message })
-            }
-          })
         }
 
         if (connection === 'close') {
@@ -700,6 +699,9 @@ function isAllowedSender(sender: string, payload: any, isGroup = false, remoteJi
       if (normSender === ownPhone && normContact === ownLid) { log('info', 'whatsapp', 'isAllowedSender: ownPhone→ownLid bridge'); return true }
     }
 
+    // For individual chats, the remoteJid is the chat partner; if it matches the contact, allow
+    if (!isGroup && normalizeJid(remoteJid) === normContact) { log('info', 'whatsapp', 'isAllowedSender: individual chat remoteJid matches contactJid'); return true }
+
     const contact = contactsArray.find(c =>
       normalizeJid(c.id) === normContact || (c.lid && normalizeJid(c.lid) === normContact) || c.id === payload.contactJid
     )
@@ -730,6 +732,12 @@ function isAllowedSender(sender: string, payload: any, isGroup = false, remoteJi
     // If the message is from a group chat whose JID is a member of this contact group, allow all senders
     if (isGroup && group.memberJids.some(m => normalizeJid(m) === normalizeJid(remoteJid))) {
       log('info', 'whatsapp', 'isAllowedSender: group chat is member of contact group, allowing', { remoteJid })
+      return true
+    }
+
+    // For individual chats, the remoteJid is the chat partner; if they're a member, allow
+    if (!isGroup && group.memberJids.some(m => normalizeJid(m) === normalizeJid(remoteJid))) {
+      log('info', 'whatsapp', 'isAllowedSender: individual chat remoteJid matches member', { remoteJid })
       return true
     }
 
