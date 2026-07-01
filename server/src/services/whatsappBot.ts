@@ -833,6 +833,9 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
     const textContent =
       message.message?.conversation ||
       message.message?.extendedTextMessage?.text ||
+      message.message?.imageMessage?.caption ||
+      message.message?.videoMessage?.caption ||
+      message.message?.documentMessage?.caption ||
       ''
 
     // ── Handle fromMe messages → route by prefix ──────────────────────
