@@ -4,6 +4,7 @@ import makeWASocket, {
   type WAMessage,
   type WASocket,
   type Contact,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys'
 import { Server as SocketIOServer } from 'socket.io'
 import { PrismaClient } from '@prisma/client'
@@ -14,6 +15,7 @@ import { SocksProxyAgent } from 'socks-proxy-agent'
 import { log } from '../utils/logger'
 import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
+import { publishUserFeed, publishUserPhoto } from './metaGraph'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -361,6 +363,10 @@ export async function sendTestMessage(): Promise<{ ok: boolean; error?: string }
 
 export function getWhatsAppStatus(_userId: string): boolean {
   return currentSocket?.user?.id ? true : false
+}
+
+export function getOwnProfile(): { ownPhone: string | null; ownLid: string | null } {
+  return { ownPhone, ownLid }
 }
 
 export async function disconnectWhatsApp(userId: string): Promise<void> {
@@ -830,12 +836,55 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
     if (!sender || sender.includes('status@broadcast')) return
     const actualSender = message.key.participant || sender
 
-    const listResponse = message.message?.listResponseMessage
-    const interactiveResponse = message.message?.interactiveResponseMessage
     const textContent =
       message.message?.conversation ||
       message.message?.extendedTextMessage?.text ||
       ''
+
+    // ── Handle fromMe messages → facebook_feed automation ──────────────
+    if (message.key.fromMe) {
+      const fbRules = await prisma.automationRule.findMany({
+        where: { isActive: true, platform: 'whatsapp', actionType: 'facebook_feed' },
+      })
+      if (fbRules.length === 0) return
+
+      for (const rule of fbRules) {
+        let payload: any
+        try { payload = JSON.parse(rule.actionPayload) } catch { payload = {} }
+        if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender)) continue
+
+        const fbUser = await prisma.facebookUser.findUnique({ where: { userId: rule.userId } })
+        if (!fbUser) continue
+
+        try {
+          const imageMsg = message.message?.imageMessage
+          if (imageMsg) {
+            const buffer = await downloadMediaMessage(message, 'buffer', {})
+            const fileName = `fb_${Date.now()}.jpg`
+            const filePath = path.resolve(process.cwd(), 'uploads', fileName)
+            fs.writeFileSync(filePath, buffer as Buffer)
+            const caption = imageMsg.caption || textContent || ''
+            const publicUrl = `${env.FRONTEND_URL.replace(/:\d+$/, '')}:3001/uploads/${fileName}`
+            await publishUserPhoto(fbUser.fbUserId, publicUrl, caption, fbUser.accessToken)
+          } else {
+            const docMsg = message.message?.documentMessage
+            if (docMsg) {
+              const caption = docMsg.caption || textContent
+              await publishUserFeed(fbUser.fbUserId, `${caption}\n\n${docMsg.fileName || 'document'}`, null, fbUser.accessToken)
+            } else if (textContent) {
+              await publishUserFeed(fbUser.fbUserId, textContent, null, fbUser.accessToken)
+            }
+          }
+          log('info', 'whatsapp', 'facebook_feed: post sent', { ruleId: rule.id })
+        } catch (err) {
+          log('error', 'whatsapp', 'facebook_feed: post failed', { ruleId: rule.id, error: (err as Error).message })
+        }
+      }
+      return
+    }
+
+    const listResponse = message.message?.listResponseMessage
+    const interactiveResponse = message.message?.interactiveResponseMessage
 
     if (!textContent && !listResponse && !interactiveResponse) return
 

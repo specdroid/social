@@ -80,12 +80,13 @@ router.get('/posts', requireAuth, async (req: AuthRequest, res: Response) => {
 })
 
 router.post('/posts', requireAuth, checkPremiumTier, async (req: AuthRequest, res: Response) => {
-  const { platform, content, mediaUrls, scheduledAt } = req.body
+  const { platform, target, content, mediaUrls, scheduledAt } = req.body
 
   const post = await prisma.scheduledPost.create({
     data: {
       userId: req.userId!,
       platform,
+      target: target || 'page',
       content,
       mediaUrls: mediaUrls ? JSON.stringify(mediaUrls) : null,
       scheduledAt: new Date(scheduledAt),
@@ -97,7 +98,7 @@ router.post('/posts', requireAuth, checkPremiumTier, async (req: AuthRequest, re
 
 router.put('/posts/:id', requireAuth, checkPremiumTier, async (req: AuthRequest, res: Response) => {
   const id = req.params.id as string
-  const { platform, content, mediaUrls, scheduledAt } = req.body
+  const { platform, target, content, mediaUrls, scheduledAt } = req.body
 
   const existing = await prisma.scheduledPost.findFirst({
     where: { id, userId: req.userId! },
@@ -108,6 +109,7 @@ router.put('/posts/:id', requireAuth, checkPremiumTier, async (req: AuthRequest,
     where: { id },
     data: {
       ...(platform !== undefined && { platform }),
+      ...(target !== undefined && { target }),
       ...(content !== undefined && { content }),
       ...(mediaUrls !== undefined && { mediaUrls: mediaUrls ? JSON.stringify(mediaUrls) : null }),
       ...(scheduledAt !== undefined && { scheduledAt: new Date(scheduledAt) }),

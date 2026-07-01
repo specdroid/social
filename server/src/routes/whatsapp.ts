@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
-import { getWhatsAppStatus, disconnectWhatsApp, getConnectionState, getLatestQrDataUrl, sendTestMessage, cleanupAuthFolder, clearCredentials, getContacts, clearContacts, deleteContact, resyncContacts, importVcf, getContactGroups, createContactGroup, updateContactGroup, deleteContactGroup, getImportedContacts, deleteImportedContact, clearImportedContacts, addImportedContact } from '../services/whatsappBot'
+import { getWhatsAppStatus, disconnectWhatsApp, getConnectionState, getLatestQrDataUrl, sendTestMessage, cleanupAuthFolder, clearCredentials, getContacts, clearContacts, deleteContact, resyncContacts, importVcf, getContactGroups, createContactGroup, updateContactGroup, deleteContactGroup, getImportedContacts, deleteImportedContact, clearImportedContacts, addImportedContact, getOwnProfile } from '../services/whatsappBot'
 import dns, { Resolver } from 'dns/promises'
 import net from 'net'
 import https from 'https'
@@ -46,6 +46,11 @@ async function resolveWithFallback(host: string, nameserverSets: string[][]): Pr
 router.get('/status', requireAuth, async (req: AuthRequest, res: Response) => {
   const state = getConnectionState()
   res.json(state)
+})
+
+router.get('/own-profile', requireAuth, async (_req: AuthRequest, res: Response) => {
+  const profile = getOwnProfile()
+  res.json(profile)
 })
 
 router.get('/contacts', requireAuth, async (req: AuthRequest, res: Response) => {

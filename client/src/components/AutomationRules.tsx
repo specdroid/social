@@ -19,6 +19,7 @@ interface AutomationRule {
 interface ScheduledPost {
   id: string
   platform: string
+  target: string
   content: string
   mediaUrls: string | null
   scheduledAt: string
@@ -58,6 +59,7 @@ export function AutomationRules() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const [postForm, setPostForm] = useState({
     platform: 'facebook',
+    target: 'page',
     content: '',
     scheduledAt: '',
   })
@@ -132,7 +134,11 @@ export function AutomationRules() {
 
   function buildPayload(): string {
     const p: Record<string, unknown> = {}
-    if (formData.mediaType === 'interactive') {
+    if (formData.actionType === 'facebook_feed') {
+      p.actionType = 'facebook_feed'
+      if (formData.contactJid) p.contactJid = formData.contactJid
+      if (formData.contactGroupId) p.contactGroupId = formData.contactGroupId
+    } else if (formData.mediaType === 'interactive') {
       p.interactive = true
       p.replyText = formData.replyText
       p.options = formData.options.filter(o => o.label.trim() && o.reply.trim())
@@ -144,8 +150,10 @@ export function AutomationRules() {
       if (formData.fileName) p.fileName = formData.fileName
       if (formData.caption) p.caption = formData.caption
     }
-    if (formData.contactJid) p.contactJid = formData.contactJid
-    if (formData.contactGroupId) p.contactGroupId = formData.contactGroupId
+    if (formData.actionType !== 'facebook_feed') {
+      if (formData.contactJid) p.contactJid = formData.contactJid
+      if (formData.contactGroupId) p.contactGroupId = formData.contactGroupId
+    }
     return JSON.stringify(p)
   }
 
@@ -290,7 +298,7 @@ export function AutomationRules() {
       }
       setShowPostForm(false)
       setEditingPost(null)
-      setPostForm({ platform: 'facebook', content: '', scheduledAt: '' })
+      setPostForm({ platform: 'facebook', target: 'page', content: '', scheduledAt: '' })
       await loadData()
     } catch {
       // handle error
@@ -303,6 +311,7 @@ export function AutomationRules() {
     const localISO = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
     setPostForm({
       platform: post.platform,
+      target: post.target || 'page',
       content: post.content,
       scheduledAt: localISO,
     })
@@ -317,6 +326,8 @@ export function AutomationRules() {
       // handle error
     }
   }
+
+  const isFacebookFeed = formData.actionType === 'facebook_feed'
 
   return (
     <div className="space-y-8">
@@ -351,7 +362,10 @@ export function AutomationRules() {
               <label className="block text-sm text-zinc-400 mb-1">Platform</label>
               <select
                 value={formData.platform}
-                onChange={(e) => setFormData({ ...formData, platform: e.target.value })}
+                onChange={(e) => {
+                  const p = e.target.value
+                  setFormData({ ...formData, platform: p, actionType: p === 'whatsapp' ? formData.actionType : 'send_dm' })
+                }}
                 className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 text-sm focus:outline-none focus:border-zinc-500"
               >
                 <option value="facebook">Facebook</option>
@@ -359,6 +373,19 @@ export function AutomationRules() {
                 <option value="whatsapp">WhatsApp</option>
               </select>
             </div>
+            {formData.platform === 'whatsapp' && (
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Action Type</label>
+                <select
+                  value={formData.actionType}
+                  onChange={(e) => setFormData({ ...formData, actionType: e.target.value })}
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 text-sm focus:outline-none focus:border-zinc-500"
+                >
+                  <option value="send_dm">Send DM</option>
+                  <option value="facebook_feed">Post to Facebook Feed</option>
+                </select>
+              </div>
+            )}
             {formData.platform === 'whatsapp' && (
               <div className="relative" ref={dropdownRef}>
                 <label className="block text-sm text-zinc-400 mb-1">Contact / Group</label>
@@ -460,17 +487,27 @@ export function AutomationRules() {
                 )}
               </div>
             )}
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1">Trigger Words (comma-separated)</label>
-              <input
-                type="text"
-                value={formData.triggerValue}
-                onChange={(e) => setFormData({ ...formData, triggerValue: e.target.value })}
-                placeholder="e.g. tool, pizza, menu"
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 text-sm focus:outline-none focus:border-zinc-500"
-              />
-            </div>
-            {formData.mediaType === 'none' && (
+            {!isFacebookFeed && (
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Trigger Words (comma-separated)</label>
+                <input
+                  type="text"
+                  value={formData.triggerValue}
+                  onChange={(e) => setFormData({ ...formData, triggerValue: e.target.value })}
+                  placeholder="e.g. tool, pizza, menu"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 text-sm focus:outline-none focus:border-zinc-500"
+                />
+              </div>
+            )}
+            {isFacebookFeed && (
+              <div className="md:col-span-2">
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg px-4 py-3 text-sm text-blue-400">
+                  When you send a message to your own WhatsApp number, it will be published to your Facebook timeline.
+                  Images will be posted as photos, documents as link previews.
+                </div>
+              </div>
+            )}
+            {!isFacebookFeed && formData.mediaType === 'none' && (
             <div>
               <label className="block text-sm text-zinc-400 mb-1">Reply Text</label>
               <input
@@ -482,6 +519,7 @@ export function AutomationRules() {
               />
             </div>
             )}
+            {!isFacebookFeed && (
             <div>
               <label className="block text-sm text-zinc-400 mb-1">Media Type</label>
               <select
@@ -497,7 +535,8 @@ export function AutomationRules() {
                 <option value="document">Document</option>
               </select>
             </div>
-            {formData.mediaType === 'interactive' && (
+            )}
+            {!isFacebookFeed && formData.mediaType === 'interactive' && (
               <div className="md:col-span-2 space-y-3">
                 <div>
                   <label className="block text-sm text-zinc-400 mb-1">Prompt Text</label>
@@ -563,7 +602,7 @@ export function AutomationRules() {
                 </div>
               </div>
             )}
-            {formData.mediaType !== 'none' && formData.mediaType !== 'interactive' && (
+            {!isFacebookFeed && formData.mediaType !== 'none' && formData.mediaType !== 'interactive' && (
               <>
                 <div className="md:col-span-2">
                   <label className="block text-sm text-zinc-400 mb-1">Media URLs</label>
@@ -672,7 +711,7 @@ export function AutomationRules() {
               {rules.map((rule) => (
                 <tr key={rule.id} className="border-b border-zinc-800/50">
                   <td className="px-4 py-3 text-zinc-50 whitespace-nowrap">{rule.name}</td>
-                  <td className="px-4 py-3 text-zinc-400 capitalize whitespace-nowrap">{rule.platform}</td>
+                  <td className="px-4 py-3 text-zinc-400 capitalize whitespace-nowrap">{rule.platform}{rule.actionType === 'facebook_feed' ? ' (Feed)' : ''}</td>
                   <td className="px-4 py-3 text-zinc-400 whitespace-nowrap">
                     {rule.triggerType} = "{rule.triggerValue}"
                   </td>
@@ -737,6 +776,19 @@ export function AutomationRules() {
                 <option value="instagram">Instagram</option>
               </select>
             </div>
+            {postForm.platform === 'facebook' && (
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Target</label>
+                <select
+                  value={postForm.target}
+                  onChange={(e) => setPostForm({ ...postForm, target: e.target.value })}
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 text-sm focus:outline-none focus:border-zinc-500"
+                >
+                  <option value="page">Page</option>
+                  <option value="user">Personal Timeline</option>
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-sm text-zinc-400 mb-1">Content</label>
               <textarea
@@ -765,7 +817,7 @@ export function AutomationRules() {
               {loading ? 'Saving...' : editingPost ? 'Update' : 'Schedule'}
             </button>
             <button
-              onClick={() => { setShowPostForm(false); setEditingPost(null); setPostForm({ platform: 'facebook', content: '', scheduledAt: '' }) }}
+              onClick={() => { setShowPostForm(false); setEditingPost(null); setPostForm({ platform: 'facebook', target: 'page', content: '', scheduledAt: '' }) }}
               className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg text-sm hover:bg-zinc-700 transition-colors"
             >
               Cancel
@@ -781,6 +833,7 @@ export function AutomationRules() {
               <tr className="border-b border-zinc-800">
                 <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Content</th>
                 <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Platform</th>
+                <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Target</th>
                 <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Scheduled</th>
                 <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Status</th>
                 <th className="text-left px-4 py-3 text-zinc-400 font-medium whitespace-nowrap">Actions</th>
@@ -789,7 +842,7 @@ export function AutomationRules() {
             <tbody>
               {posts.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">
                     No scheduled posts
                   </td>
                 </tr>
@@ -798,6 +851,7 @@ export function AutomationRules() {
                 <tr key={post.id} className="border-b border-zinc-800/50">
                   <td className="px-4 py-3 text-zinc-50 max-w-xs truncate">{post.content}</td>
                   <td className="px-4 py-3 text-zinc-400 capitalize whitespace-nowrap">{post.platform}</td>
+                  <td className="px-4 py-3 text-zinc-400 capitalize whitespace-nowrap">{post.target || 'page'}</td>
                   <td className="px-4 py-3 text-zinc-400 whitespace-nowrap">
                     {new Date(post.scheduledAt).toLocaleString()}
                   </td>
