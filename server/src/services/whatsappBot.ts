@@ -1058,9 +1058,10 @@ _Example:_ -help
         return
       }
 
-      // ── fb: content ── post to Facebook page ──
-      const fbPrefix = textContent.match(/^fb:\s*(.*)/is)
-      const fbContent = fbPrefix ? fbPrefix[1] : (textContent || '')
+      // ── fb: content / fb : content ── post to Facebook page ──
+      const fbPrefix = textContent.match(/^fb\s*:\s*(.*)/is)
+      if (!fbPrefix) return
+      const fbContent = fbPrefix[1]
       const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
       if (!fbContent && !hasMedia) return
 
