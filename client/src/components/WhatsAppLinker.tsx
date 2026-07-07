@@ -29,6 +29,7 @@ export function WhatsAppLinker() {
   const [sendTestResult, setSendTestResult] = useState<string | null>(null)
   const [cleanAuthLoading, setCleanAuthLoading] = useState(false)
   const [cleanAuthResult, setCleanAuthResult] = useState<string | null>(null)
+  const [forceCleanLoading, setForceCleanLoading] = useState(false)
   const [contacts, setContacts] = useState<Array<{ id: string; name?: string; notify?: string; verifiedName?: string; phoneNumber?: string }>>([])
   const [contactsLoading, setContactsLoading] = useState(false)
   const [contactsOpen, setContactsOpen] = useState(false)
@@ -214,6 +215,22 @@ export function WhatsAppLinker() {
     } finally {
       setCleanAuthLoading(false)
       setTimeout(() => setCleanAuthResult(null), 8000)
+    }
+  }
+
+  async function handleForceClean() {
+    if (!window.confirm('This will disconnect WhatsApp and delete ALL auth files. You will need to re-link. Continue?')) return
+    setForceCleanLoading(true)
+    try {
+      await post('/api/whatsapp/force-clean-auth')
+      setWaConnected(false)
+      setQrCode(null)
+      setStatusState('idle')
+      setStatusMessage('Auth forcefully cleaned. Click Connect to re-link.')
+    } catch {
+      setStatusMessage('Force clean failed')
+    } finally {
+      setForceCleanLoading(false)
     }
   }
 
@@ -928,6 +945,15 @@ export function WhatsAppLinker() {
         {cleanAuthResult && (
           <p className="text-xs text-center text-zinc-400">{cleanAuthResult}</p>
         )}
+
+        <button
+          onClick={handleForceClean}
+          disabled={forceCleanLoading}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50"
+        >
+          {forceCleanLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertCircle className="w-4 h-4" />}
+          {forceCleanLoading ? 'Force Cleaning...' : 'Force Clean Auth (delete all)'}
+        </button>
 
         <hr className="border-zinc-800" />
 

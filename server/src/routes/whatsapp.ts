@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import { PrismaClient } from '@prisma/client'
-import { getWhatsAppStatus, disconnectWhatsApp, getConnectionState, getLatestQrDataUrl, sendTestMessage, cleanupAuthFolder, clearCredentials, getContacts, clearContacts, deleteContact, resyncContacts, importVcf, getContactGroups, createContactGroup, updateContactGroup, deleteContactGroup, getImportedContacts, deleteImportedContact, clearImportedContacts, addImportedContact, getOwnProfile } from '../services/whatsappBot'
+import { getWhatsAppStatus, disconnectWhatsApp, getConnectionState, getLatestQrDataUrl, sendTestMessage, cleanupAuthFolder, clearCredentials, forceCleanAuth, getContacts, clearContacts, deleteContact, resyncContacts, importVcf, getContactGroups, createContactGroup, updateContactGroup, deleteContactGroup, getImportedContacts, deleteImportedContact, clearImportedContacts, addImportedContact, getOwnProfile } from '../services/whatsappBot'
 import dns, { Resolver } from 'dns/promises'
 import net from 'net'
 import https from 'https'
@@ -193,6 +193,11 @@ router.post('/cleanup-auth', requireAuth, async (_req: AuthRequest, res: Respons
 router.post('/clear-credentials', requireAuth, async (_req: AuthRequest, res: Response) => {
   const result = clearCredentials()
   res.json({ ok: true, deleted: result.deleted })
+})
+
+router.post('/force-clean-auth', requireAuth, async (_req: AuthRequest, res: Response) => {
+  forceCleanAuth()
+  res.json({ ok: true })
 })
 
 // Saved Group Lists

@@ -125,6 +125,33 @@ export function clearCredentials(): { deleted: number } {
   return { deleted }
 }
 
+export function forceCleanAuth(): void {
+  if (currentSocket) {
+    try {
+      currentSocket.end(new Error('Force clean'))
+    } catch {
+      // ignore
+    }
+    currentSocket = null
+  }
+  stopReconnecting = true
+  isStarting = false
+  latestQrDataUrl = null
+  ownPhone = null
+  ownLid = null
+  contactsArray = []
+  if (fs.existsSync(AUTH_DIR)) {
+    for (const file of fs.readdirSync(AUTH_DIR)) {
+      try {
+        fs.unlinkSync(path.join(AUTH_DIR, file))
+      } catch {
+        // skip locked files
+      }
+    }
+  }
+  log('info', 'whatsapp', 'Auth folder force cleaned — all files removed')
+}
+
 function emit(event: string, data: Record<string, unknown>): void {
   if (io) io.emit(event, data)
 }
