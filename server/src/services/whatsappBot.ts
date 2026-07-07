@@ -873,8 +873,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
       const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter(Boolean)
 
-      // ── get my ws groups ──
-      if (/^get my ws groups$/i.test(textContent.trim())) {
+      // ── ws get my groups ──
+      if (/^ws get my groups$/i.test(textContent.trim())) {
         const lines: string[] = []
         for (const [jid, meta] of Object.entries(allGroups)) {
           const m = meta as any
@@ -886,8 +886,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         return
       }
 
-      // ── get ws group lists content / get ws group lists ──
-      if (/^get ws group lists( content)?$/i.test(textContent.trim())) {
+      // ── ws get group lists content / ws get group lists ──
+      if (/^ws get group lists( content)?$/i.test(textContent.trim())) {
         const showContent = /content$/i.test(textContent.trim())
         const lists = await prisma.savedGroupList.findMany({ orderBy: { createdAt: 'desc' } })
         if (lists.length === 0) {
@@ -926,9 +926,9 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           await sock.sendMessage(sender, {
             text: `📋 *Available Commands*
 
-🔹 *get my ws groups*
+🔹 *ws get my groups*
 List your WhatsApp groups with admin status
-_Example:_ get my ws groups
+_Example:_ ws get my groups
 
 🔹 *ws create name save gr1, gr2*
 Save a named group list
@@ -946,13 +946,13 @@ _Example:_ ws my group: Hello!
 Post to your Facebook page
 _Example:_ fb: Hello Facebook!
 
-🔹 *get ws group lists*
+🔹 *ws get group lists*
 Show all saved group list names
-_Example:_ get ws group lists
+_Example:_ ws get group lists
 
-🔹 *get ws group lists content*
+🔹 *ws get group lists content*
 Show all saved group lists with their groups
-_Example:_ get ws group lists content
+_Example:_ ws get group lists content
 
 🔹 *-help*
 Show this help
@@ -1081,7 +1081,7 @@ _Example:_ -help
 
       // ── catch unrecognized ws commands ──
       if (/^ws\s+/i.test(textContent)) {
-        await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nget my ws groups' })
+        await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nws get my groups' })
         return
       }
 

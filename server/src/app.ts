@@ -43,9 +43,9 @@ export function createApp(): express.Application {
     res.json({
       commands: [
         {
-          command: 'get my ws groups',
+          command: 'ws get my groups',
           description: 'List all your WhatsApp groups with admin status.',
-          example: 'get my ws groups',
+          example: 'ws get my groups',
         },
         {
           command: 'ws create <name> save <group1>, <group2>, ...',
@@ -68,14 +68,14 @@ export function createApp(): express.Application {
           example: 'fb: Hello Facebook!',
         },
         {
-          command: 'get ws group lists',
+          command: 'ws get group lists',
           description: 'Show all saved group list names.',
-          example: 'get ws group lists',
+          example: 'ws get group lists',
         },
         {
-          command: 'get ws group lists content',
+          command: 'ws get group lists content',
           description: 'Show all saved group lists with their groups.',
-          example: 'get ws group lists content',
+          example: 'ws get group lists content',
         },
         {
           command: '-help',
