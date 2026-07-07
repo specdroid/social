@@ -194,6 +194,15 @@ export async function getContacts(): Promise<ContactEntry[]> {
   return contactsArray
 }
 
+export async function getWhatsAppGroups(): Promise<Array<{ jid: string; subject: string }>> {
+  if (!currentSocket?.user?.id) return []
+  const groups = await currentSocket.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
+  return Object.entries(groups).map(([jid, meta]) => ({
+    jid,
+    subject: (meta as any).subject || jid,
+  }))
+}
+
 export function clearContacts(): number {
   const count = contactsArray.length
   contactsArray = []
@@ -1164,10 +1173,11 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       if (allowed) {
         const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
         const groupMeta = allGroups[sender]
-        const groupName = (groupMeta as any)?.subject?.toLowerCase() || ''
+        const groupName = (groupMeta as any)?.subject || ''
         if (groupName) {
           try {
-            const allowedGrp = await prisma.allowedGroup.findUnique({ where: { name: groupName } })
+            const allAllowedGrps = await prisma.allowedGroup.findMany()
+            const allowedGrp = allAllowedGrps.find(g => g.name.toLowerCase() === groupName.toLowerCase())
             if (allowedGrp) {
               const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter((x): x is string => !!x)
               const handled = await processCommands(sock, sender, textContent, message, allGroups, myJids)

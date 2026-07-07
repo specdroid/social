@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import { PrismaClient } from '@prisma/client'
-import { getWhatsAppStatus, disconnectWhatsApp, getConnectionState, getLatestQrDataUrl, sendTestMessage, cleanupAuthFolder, clearCredentials, forceCleanAuth, getContacts, clearContacts, deleteContact, resyncContacts, importVcf, getContactGroups, createContactGroup, updateContactGroup, deleteContactGroup, getImportedContacts, deleteImportedContact, clearImportedContacts, addImportedContact, getOwnProfile } from '../services/whatsappBot'
+import { getWhatsAppStatus, disconnectWhatsApp, getConnectionState, getLatestQrDataUrl, sendTestMessage, cleanupAuthFolder, clearCredentials, forceCleanAuth, getContacts, clearContacts, deleteContact, resyncContacts, importVcf, getContactGroups, createContactGroup, updateContactGroup, deleteContactGroup, getImportedContacts, deleteImportedContact, clearImportedContacts, addImportedContact, getOwnProfile, getWhatsAppGroups } from '../services/whatsappBot'
 import dns, { Resolver } from 'dns/promises'
 import net from 'net'
 import https from 'https'
@@ -281,6 +281,17 @@ router.delete('/gateway/groups/:id', requireAuth, async (req: AuthRequest, res: 
   } catch {
     res.status(404).json({ error: 'Not found' })
   }
+})
+
+// Gateway — available groups & contacts for the picker UI
+router.get('/gateway/available-groups', requireAuth, async (_req: AuthRequest, res: Response) => {
+  const groups = await getWhatsAppGroups()
+  res.json({ groups })
+})
+
+router.get('/gateway/available-contacts', requireAuth, async (_req: AuthRequest, res: Response) => {
+  const contacts = await getContacts()
+  res.json({ contacts })
 })
 
 router.get('/diagnostics', async (_req: Request, res: Response) => {

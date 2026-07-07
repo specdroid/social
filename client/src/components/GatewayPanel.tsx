@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Shield, ChevronDown, ChevronUp, Plus, Loader2, Trash2, Phone, Users } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Shield, ChevronDown, ChevronUp, Plus, Loader2, Trash2, Phone, Users, Search, X } from 'lucide-react'
 
 interface AllowedNumber { id: string; phone: string; createdAt: string }
 interface AllowedGroup { id: string; name: string; createdAt: string }
+interface AvailableContact { id: string; name?: string; notify?: string; verifiedName?: string; phoneNumber?: string }
+interface AvailableGroup { jid: string; subject: string }
 
 export function GatewayPanel({
   get, post, del,
@@ -15,8 +17,15 @@ export function GatewayPanel({
   const [numbers, setNumbers] = useState<AllowedNumber[]>([])
   const [groups, setGroups] = useState<AllowedGroup[]>([])
   const [loading, setLoading] = useState(false)
-  const [newPhone, setNewPhone] = useState('')
-  const [newGroup, setNewGroup] = useState('')
+
+  const [availableContacts, setAvailableContacts] = useState<AvailableContact[]>([])
+  const [availableGroups, setAvailableGroups] = useState<AvailableGroup[]>([])
+  const [avLoading, setAvLoading] = useState(false)
+
+  const [contactSearch, setContactSearch] = useState('')
+  const [groupSearch, setGroupSearch] = useState('')
+  const [showContactPicker, setShowContactPicker] = useState(false)
+  const [showGroupPicker, setShowGroupPicker] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -32,30 +41,79 @@ export function GatewayPanel({
     }
   }, [get])
 
-  useEffect(() => { if (open) load() }, [open, load])
+  const loadAvailable = useCallback(async () => {
+    setAvLoading(true)
+    try {
+      const [cData, gData] = await Promise.all([
+        get<{ contacts: AvailableContact[] }>('/api/whatsapp/gateway/available-contacts'),
+        get<{ groups: AvailableGroup[] }>('/api/whatsapp/gateway/available-groups'),
+      ])
+      setAvailableContacts(cData.contacts || [])
+      setAvailableGroups(gData.groups || [])
+    } finally {
+      setAvLoading(false)
+    }
+  }, [get])
 
-  const addNumber = async () => {
-    if (!newPhone.trim()) return
-    await post('/api/whatsapp/gateway/numbers', { phone: newPhone.trim() })
-    setNewPhone('')
-    load()
-  }
+  useEffect(() => {
+    if (open) {
+      load()
+      loadAvailable()
+    }
+  }, [open, load, loadAvailable])
 
   const removeNumber = async (id: string) => {
     await del(`/api/whatsapp/gateway/numbers/${id}`)
     load()
   }
 
-  const addGroup = async () => {
-    if (!newGroup.trim()) return
-    await post('/api/whatsapp/gateway/groups', { name: newGroup.trim() })
-    setNewGroup('')
-    load()
-  }
-
   const removeGroup = async (id: string) => {
     await del(`/api/whatsapp/gateway/groups/${id}`)
     load()
+  }
+
+  const addNumber = async (phone: string) => {
+    await post('/api/whatsapp/gateway/numbers', { phone })
+    setShowContactPicker(false)
+    setContactSearch('')
+    load()
+  }
+
+  const addGroup = async (name: string) => {
+    await post('/api/whatsapp/gateway/groups', { name })
+    setShowGroupPicker(false)
+    setGroupSearch('')
+    load()
+  }
+
+  const allowedPhoneSet = useMemo(() => new Set(numbers.map(n => n.phone)), [numbers])
+  const allowedGroupNameSet = useMemo(() => new Set(groups.map(g => g.name.toLowerCase())), [groups])
+
+  const filteredContacts = useMemo(() => {
+    const q = contactSearch.toLowerCase()
+    return availableContacts.filter(c => {
+      if (c.phoneNumber && allowedPhoneSet.has(c.phoneNumber)) return false
+      if (!q) return true
+      const display = [c.name, c.notify, c.verifiedName, c.phoneNumber].filter(Boolean).join(' ').toLowerCase()
+      return display.includes(q)
+    })
+  }, [availableContacts, contactSearch, allowedPhoneSet])
+
+  const filteredGroups = useMemo(() => {
+    const q = groupSearch.toLowerCase()
+    return availableGroups.filter(g => {
+      if (allowedGroupNameSet.has(g.subject.toLowerCase())) return false
+      if (!q) return true
+      return g.subject.toLowerCase().includes(q)
+    })
+  }, [availableGroups, groupSearch, allowedGroupNameSet])
+
+  function contactLabel(c: AvailableContact): string {
+    return c.name || c.notify || c.verifiedName || c.phoneNumber || c.id
+  }
+
+  function contactSub(c: AvailableContact): string {
+    return c.phoneNumber ? `+${c.phoneNumber}` : ''
   }
 
   return (
@@ -87,18 +145,56 @@ export function GatewayPanel({
               <Phone className="w-4 h-4" />
               <span className="font-medium">Allowed Numbers</span>
             </div>
-            <div className="flex gap-2">
-              <input
-                value={newPhone}
-                onChange={(e) => setNewPhone(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addNumber()}
-                placeholder="96170123456"
-                className="flex-1 px-3 py-1.5 bg-zinc-800 rounded text-sm text-zinc-50 placeholder-zinc-500"
-              />
-              <button onClick={addNumber} className="p-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500">
+
+            {!showContactPicker && (
+              <button
+                onClick={() => { setShowContactPicker(true); setContactSearch('') }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 bg-zinc-800 rounded text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700"
+              >
                 <Plus className="w-4 h-4" />
+                Add number
               </button>
-            </div>
+            )}
+
+            {showContactPicker && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 bg-zinc-800 rounded px-2 py-1">
+                  <Search className="w-4 h-4 text-zinc-500 shrink-0" />
+                  <input
+                    value={contactSearch}
+                    onChange={(e) => setContactSearch(e.target.value)}
+                    placeholder="Search contacts..."
+                    className="flex-1 bg-transparent text-sm text-zinc-50 placeholder-zinc-500 outline-none"
+                    autoFocus
+                  />
+                  <button onClick={() => { setShowContactPicker(false); setContactSearch('') }}>
+                    <X className="w-4 h-4 text-zinc-500 hover:text-zinc-300" />
+                  </button>
+                </div>
+                <div className="max-h-48 overflow-y-auto space-y-0.5">
+                  {avLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-zinc-400 mx-auto my-2" />
+                  ) : filteredContacts.length === 0 ? (
+                    <p className="text-xs text-zinc-500 text-center py-2">
+                      {contactSearch ? 'No matching contacts' : 'No contacts available'}
+                    </p>
+                  ) : (
+                    filteredContacts.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => c.phoneNumber && addNumber(c.phoneNumber)}
+                        disabled={!c.phoneNumber}
+                        className="w-full text-left px-3 py-1.5 rounded text-sm bg-zinc-800/50 hover:bg-zinc-700 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <span>{contactLabel(c)}</span>
+                        {contactSub(c) && <span className="text-zinc-500 ml-2">{contactSub(c)}</span>}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin text-zinc-400 mx-auto" />
             ) : numbers.length === 0 ? (
@@ -123,18 +219,54 @@ export function GatewayPanel({
               <Users className="w-4 h-4" />
               <span className="font-medium">Allowed Groups</span>
             </div>
-            <div className="flex gap-2">
-              <input
-                value={newGroup}
-                onChange={(e) => setNewGroup(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addGroup()}
-                placeholder="Exams"
-                className="flex-1 px-3 py-1.5 bg-zinc-800 rounded text-sm text-zinc-50 placeholder-zinc-500"
-              />
-              <button onClick={addGroup} className="p-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500">
+
+            {!showGroupPicker && (
+              <button
+                onClick={() => { setShowGroupPicker(true); setGroupSearch('') }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 bg-zinc-800 rounded text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700"
+              >
                 <Plus className="w-4 h-4" />
+                Add group
               </button>
-            </div>
+            )}
+
+            {showGroupPicker && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 bg-zinc-800 rounded px-2 py-1">
+                  <Search className="w-4 h-4 text-zinc-500 shrink-0" />
+                  <input
+                    value={groupSearch}
+                    onChange={(e) => setGroupSearch(e.target.value)}
+                    placeholder="Search groups..."
+                    className="flex-1 bg-transparent text-sm text-zinc-50 placeholder-zinc-500 outline-none"
+                    autoFocus
+                  />
+                  <button onClick={() => { setShowGroupPicker(false); setGroupSearch('') }}>
+                    <X className="w-4 h-4 text-zinc-500 hover:text-zinc-300" />
+                  </button>
+                </div>
+                <div className="max-h-48 overflow-y-auto space-y-0.5">
+                  {avLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-zinc-400 mx-auto my-2" />
+                  ) : filteredGroups.length === 0 ? (
+                    <p className="text-xs text-zinc-500 text-center py-2">
+                      {groupSearch ? 'No matching groups' : 'No groups available'}
+                    </p>
+                  ) : (
+                    filteredGroups.map((g) => (
+                      <button
+                        key={g.jid}
+                        onClick={() => addGroup(g.subject)}
+                        className="w-full text-left px-3 py-1.5 rounded text-sm bg-zinc-800/50 hover:bg-zinc-700 text-zinc-300"
+                      >
+                        {g.subject}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin text-zinc-400 mx-auto" />
             ) : groups.length === 0 ? (
