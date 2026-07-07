@@ -873,8 +873,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
       const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter(Boolean)
 
-      // ── ws get my groups ──
-      if (/^ws get my groups$/i.test(textContent.trim())) {
+      // ── ws get groups ──
+      if (/^ws get groups$/i.test(textContent.trim())) {
         const lines: string[] = []
         for (const [jid, meta] of Object.entries(allGroups)) {
           const m = meta as any
@@ -926,9 +926,9 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           await sock.sendMessage(sender, {
             text: `📋 *Available Commands*
 
-🔹 *ws get my groups*
+🔹 *ws get groups*
 List your WhatsApp groups with admin status
-_Example:_ ws get my groups
+_Example:_ ws get groups
 
 🔹 *ws create name save gr1, gr2*
 Save a named group list
@@ -1081,7 +1081,7 @@ _Example:_ -help
 
       // ── catch unrecognized ws commands ──
       if (/^ws\s+/i.test(textContent)) {
-        await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nws get my groups' })
+        await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nws get groups' })
         return
       }
 
