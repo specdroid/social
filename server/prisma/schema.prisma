@@ -136,6 +136,18 @@ model SystemLog {
   createdAt DateTime @default(now())
 }
 
+model AllowedNumber {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  createdAt DateTime @default(now())
+}
+
+model AllowedGroup {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
 model RetryQueue {
   id          String   @id @default(cuid())
   source      String

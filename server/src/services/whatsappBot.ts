@@ -851,80 +851,66 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
   return true
 }
 
-async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promise<void> {
-  try {
-    const sender = message.key.remoteJid
-    if (!sender || sender.includes('status@broadcast')) return
-    const actualSender = message.key.participant || sender
+async function processCommands(
+  sock: WASocket,
+  sender: string,
+  textContent: string,
+  message: WAMessage,
+  allGroups: Record<string, any>,
+  myJids: string[],
+): Promise<boolean> {
+  // ── ws get groups ──
+  if (/^ws get groups$/i.test(textContent.trim())) {
+    const lines: string[] = []
+    for (const [jid, meta] of Object.entries(allGroups)) {
+      const m = meta as any
+      const isAdmin = m.participants?.some((p: any) => myJids.includes(normalizeJid(p.id)) && p.admin)
+      const role = isAdmin ? '(admin)' : ''
+      lines.push(`${m.subject} ${role}`)
+    }
+    await sock.sendMessage(sender, { text: lines.length ? lines.join('\n') : 'No groups found' })
+    return true
+  }
 
-    const textContent =
-      message.message?.conversation ||
-      message.message?.extendedTextMessage?.text ||
-      message.message?.imageMessage?.caption ||
-      message.message?.videoMessage?.caption ||
-      message.message?.documentMessage?.caption ||
-      ''
-
-    // ── Handle fromMe messages → route by prefix ──────────────────────
-    if (message.key.fromMe) {
-      const normSender = normalizeJid(sender)
-      if (normSender !== ownPhone && normSender !== ownLid) return
-
-      const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
-      const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter(Boolean)
-
-      // ── ws get groups ──
-      if (/^ws get groups$/i.test(textContent.trim())) {
-        const lines: string[] = []
-        for (const [jid, meta] of Object.entries(allGroups)) {
-          const m = meta as any
-          const isAdmin = m.participants?.some((p: any) => myJids.includes(normalizeJid(p.id)) && p.admin)
-          const role = isAdmin ? '(admin)' : ''
-          lines.push(`${m.subject} ${role}`)
-        }
-        await sock.sendMessage(sender, { text: lines.length ? lines.join('\n') : 'No groups found' })
-        return
+  // ── ws get group lists content / ws get group lists ──
+  if (/^ws get group lists( content)?$/i.test(textContent.trim())) {
+    const showContent = /content$/i.test(textContent.trim())
+    const lists = await prisma.savedGroupList.findMany({ orderBy: { createdAt: 'desc' } })
+    if (lists.length === 0) {
+      await sock.sendMessage(sender, { text: 'No saved group lists.' })
+      return true
+    }
+    const lines: string[] = []
+    for (const l of lists) {
+      const groups: string[] = JSON.parse(l.groups)
+      if (showContent) {
+        lines.push(`📁 *${l.name}*\n  ${groups.join('\n  ')}`)
+      } else {
+        lines.push(`📁 ${l.name}`)
       }
+    }
+    await sock.sendMessage(sender, { text: lines.join('\n\n') })
+    return true
+  }
 
-      // ── ws get group lists content / ws get group lists ──
-      if (/^ws get group lists( content)?$/i.test(textContent.trim())) {
-        const showContent = /content$/i.test(textContent.trim())
-        const lists = await prisma.savedGroupList.findMany({ orderBy: { createdAt: 'desc' } })
-        if (lists.length === 0) {
-          await sock.sendMessage(sender, { text: 'No saved group lists.' })
-          return
-        }
-        const lines: string[] = []
-        for (const l of lists) {
-          const groups: string[] = JSON.parse(l.groups)
-          if (showContent) {
-            lines.push(`📁 *${l.name}*\n  ${groups.join('\n  ')}`)
-          } else {
-            lines.push(`📁 ${l.name}`)
-          }
-        }
-        await sock.sendMessage(sender, { text: lines.join('\n\n') })
-        return
+  // ── -help ──
+  if (/^-help$/i.test(textContent.trim())) {
+    try {
+      const resp = await fetch(`${env.FRONTEND_URL}/api/help`)
+      const data = await resp.json() as { commands: Array<{ command: string; description: string; example: string }>; note: string }
+      const lines: string[] = [
+        '📋 *Commands*\n',
+      ]
+      for (const c of data.commands) {
+        lines.push(
+          `🔹 *${c.command}*\n${c.description}\n_Example:_ ${c.example}`
+        )
       }
-
-      // ── -help ──
-      if (/^-help$/i.test(textContent.trim())) {
-        try {
-          const resp = await fetch(`${env.FRONTEND_URL}/api/help`)
-          const data = await resp.json() as { commands: Array<{ command: string; description: string; example: string }>; note: string }
-          const lines: string[] = [
-            '📋 *Commands*\n',
-          ]
-          for (const c of data.commands) {
-            lines.push(
-              `🔹 *${c.command}*\n${c.description}\n_Example:_ ${c.example}`
-            )
-          }
-          lines.push(`\n💡 ${data.note}`)
-          await sock.sendMessage(sender, { text: lines.join('\n\n') })
-        } catch {
-          await sock.sendMessage(sender, {
-            text: `📋 *Available Commands*
+      lines.push(`\n💡 ${data.note}`)
+      await sock.sendMessage(sender, { text: lines.join('\n\n') })
+    } catch {
+      await sock.sendMessage(sender, {
+        text: `📋 *Available Commands*
 
 🔹 *ws get groups*
 List your WhatsApp groups with admin status
@@ -959,182 +945,237 @@ Show this help
 _Example:_ -help
 
 💡 Send commands as self-chat messages (message yourself)`,
-          })
-        }
-        return
+      })
+    }
+    return true
+  }
+
+  // ── ws create name save gr1, gr2, ... ── save a named group list ──
+  const createMatch = textContent.match(/^ws\s+create\s+(?:'(.+?)'\s+save\s+\[(.+?)\]|(.+?)\s+save\s+(.+))/is)
+  if (createMatch) {
+    const listName = (createMatch[1] || createMatch[3]).trim()
+    const groupsRaw = (createMatch[2] || createMatch[4])
+    const groupNames = groupsRaw.split(',').map((s) => s.trim()).filter(Boolean)
+    if (!listName || groupNames.length === 0) return true
+    try {
+      await prisma.savedGroupList.upsert({
+        where: { name: listName },
+        update: { groups: JSON.stringify(groupNames) },
+        create: { name: listName, groups: JSON.stringify(groupNames) },
+      })
+      await sock.sendMessage(sender, { text: `✅ Saved list "${listName}" (${groupNames.length} groups)\n${groupNames.join(', ')}` })
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ Failed to save list: ${(err as Error).message}` })
+    }
+    return true
+  }
+
+  // ── ws list name: content ── send to groups in a saved list ──
+  const listMatch = textContent.match(/^ws\s+list\s+(.+?):\s*(.*)/is)
+  if (listMatch) {
+    const listName = listMatch[1].trim()
+    const content = listMatch[2] || ''
+    const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
+    if (!content && !hasMedia) return true
+
+    const savedList = await prisma.savedGroupList.findUnique({ where: { name: listName } })
+    if (!savedList) {
+      await sock.sendMessage(sender, { text: `❌ List "${listName}" not found` })
+      return true
+    }
+    const groupNames: string[] = JSON.parse(savedList.groups)
+    const results: string[] = []
+
+    for (const gName of groupNames.map((s) => s.toLowerCase())) {
+      const waGroup = Object.entries(allGroups).find(([, meta]) => {
+        const subject = (meta as any).subject?.toLowerCase() || ''
+        if (subject !== gName) return false
+        return (meta as any).participants?.some(
+          (p: any) => myJids.includes(normalizeJid(p.id)) && p.admin
+        )
+      })
+      if (!waGroup) {
+        results.push(`❌ ${gName}: not found or not admin`)
+        continue
       }
-
-      // ── ws create name save gr1, gr2, ... ── save a named group list ──
-      const createMatch = textContent.match(/^ws\s+create\s+(?:'(.+?)'\s+save\s+\[(.+?)\]|(.+?)\s+save\s+(.+))/is)
-      if (createMatch) {
-        const listName = (createMatch[1] || createMatch[3]).trim()
-        const groupsRaw = (createMatch[2] || createMatch[4])
-        const groupNames = groupsRaw.split(',').map((s) => s.trim()).filter(Boolean)
-        if (!listName || groupNames.length === 0) return
-        try {
-          await prisma.savedGroupList.upsert({
-            where: { name: listName },
-            update: { groups: JSON.stringify(groupNames) },
-            create: { name: listName, groups: JSON.stringify(groupNames) },
-          })
-          await sock.sendMessage(sender, { text: `✅ Saved list "${listName}" (${groupNames.length} groups)\n${groupNames.join(', ')}` })
-        } catch (err) {
-          await sock.sendMessage(sender, { text: `❌ Failed to save list: ${(err as Error).message}` })
-        }
-        return
-      }
-
-      // ── ws list name: content ── send to groups in a saved list ──
-      const listMatch = textContent.match(/^ws\s+list\s+(.+?):\s*(.*)/is)
-      if (listMatch) {
-        const listName = listMatch[1].trim()
-        const content = listMatch[2] || ''
-        const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
-        if (!content && !hasMedia) return
-
-        const savedList = await prisma.savedGroupList.findUnique({ where: { name: listName } })
-        if (!savedList) {
-          await sock.sendMessage(sender, { text: `❌ List "${listName}" not found` })
-          return
-        }
-        const groupNames: string[] = JSON.parse(savedList.groups)
-        const results: string[] = []
-
-        for (const gName of groupNames.map((s) => s.toLowerCase())) {
-          const waGroup = Object.entries(allGroups).find(([, meta]) => {
-            const subject = (meta as any).subject?.toLowerCase() || ''
-            if (subject !== gName) return false
-            return (meta as any).participants?.some(
-              (p: any) => myJids.includes(normalizeJid(p.id)) && p.admin
-            )
-          })
-          if (!waGroup) {
-            results.push(`❌ ${gName}: not found or not admin`)
-            continue
-          }
-          const groupJid = waGroup[0]
-          try {
-            const imageMsg = message.message?.imageMessage
-            if (imageMsg) {
-              const buffer = await downloadMediaMessage(message, 'buffer', {})
-              await sock.sendMessage(groupJid, { image: buffer, caption: content } as any)
-            } else if (message.message?.documentMessage) {
-              const buffer = await downloadMediaMessage(message, 'buffer', {})
-              await sock.sendMessage(groupJid, { document: buffer, caption: content, fileName: message.message.documentMessage.fileName || 'document' } as any)
-            } else {
-              await sock.sendMessage(groupJid, { text: content } as any)
-            }
-            results.push(`✅ ${gName}`)
-          } catch (err) {
-            results.push(`❌ ${gName}: ${(err as Error).message}`)
-          }
-        }
-        await sock.sendMessage(sender, { text: results.join('\n') })
-        return
-      }
-
-      // ── ws group1, group2: content ── forward to WhatsApp group chats ──
-      const wsMatch = textContent.match(/^ws\s+(.+?):\s*(.*)/is)
-      if (wsMatch) {
-        const groupNames = wsMatch[1].split(',').map((s) => s.trim().toLowerCase())
-        const content = wsMatch[2] || ''
-        const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
-        if (groupNames.length === 0 || (!content && !hasMedia)) return
-
-        const results: string[] = []
-
-        for (const gName of groupNames) {
-          const waGroup = Object.entries(allGroups).find(([, meta]) => {
-            const subject = (meta as any).subject?.toLowerCase() || ''
-            if (subject !== gName) return false
-            return (meta as any).participants?.some(
-              (p: any) => myJids.includes(normalizeJid(p.id)) && p.admin
-            )
-          })
-          if (!waGroup) {
-            results.push(`❌ ${gName}: not found or not admin`)
-            log('warn', 'whatsapp', 'whatsapp_groups: group not found or not admin', { gName })
-            continue
-          }
-          const groupJid = waGroup[0]
-          try {
-            const imageMsg = message.message?.imageMessage
-            if (imageMsg) {
-              const buffer = await downloadMediaMessage(message, 'buffer', {})
-              await sock.sendMessage(groupJid, { image: buffer, caption: content } as any)
-            } else if (message.message?.documentMessage) {
-              const buffer = await downloadMediaMessage(message, 'buffer', {})
-              await sock.sendMessage(groupJid, { document: buffer, caption: content, fileName: message.message.documentMessage.fileName || 'document' } as any)
-            } else {
-              await sock.sendMessage(groupJid, { text: content } as any)
-            }
-            results.push(`✅ ${gName}`)
-            log('info', 'whatsapp', 'whatsapp_groups: sent', { group: gName, jid: groupJid })
-          } catch (err) {
-            results.push(`❌ ${gName}: ${(err as Error).message}`)
-            log('error', 'whatsapp', 'whatsapp_groups: send failed', { group: gName, jid: groupJid, error: (err as Error).message })
-          }
-        }
-        await sock.sendMessage(sender, { text: results.join('\n') })
-        return
-      }
-
-      // ── catch unrecognized ws commands ──
-      if (/^ws\s+/i.test(textContent)) {
-        await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nws get groups' })
-        return
-      }
-
-      // ── fb: content / fb : content ── post to Facebook page ──
-      const fbPrefix = textContent.match(/^fb\s*:\s*(.*)/is)
-      if (!fbPrefix) return
-      const fbContent = fbPrefix[1]
-      const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
-      if (!fbContent && !hasMedia) return
-
-      const fbPage = await prisma.facebookPage.findFirst()
-      if (!fbPage) {
-        await sock.sendMessage(sender, { text: '❌ No Facebook page connected' })
-        log('warn', 'whatsapp', 'facebook_feed: no Facebook page connected')
-        return
-      }
-
+      const groupJid = waGroup[0]
       try {
         const imageMsg = message.message?.imageMessage
-        let content = fbContent
-        let mediaUrls: string[] | null = null
-
         if (imageMsg) {
           const buffer = await downloadMediaMessage(message, 'buffer', {})
-          const fileName = `fb_${Date.now()}.jpg`
-          const filePath = path.resolve(process.cwd(), 'uploads', fileName)
-          fs.writeFileSync(filePath, buffer as Buffer)
-          content = imageMsg.caption || fbContent || ''
-          mediaUrls = [`${env.FRONTEND_URL.replace(/\/$/, '')}/uploads/${fileName}`]
-          await publishPost(fbPage.pageId, content, mediaUrls, fbPage.accessToken)
+          await sock.sendMessage(groupJid, { image: buffer, caption: content } as any)
+        } else if (message.message?.documentMessage) {
+          const buffer = await downloadMediaMessage(message, 'buffer', {})
+          await sock.sendMessage(groupJid, { document: buffer, caption: content, fileName: message.message.documentMessage.fileName || 'document' } as any)
         } else {
-          const docMsg = message.message?.documentMessage
-          if (docMsg) {
-            content = `${docMsg.caption || fbContent}\n\n${docMsg.fileName || 'document'}`
-            await publishPost(fbPage.pageId, content, null, fbPage.accessToken)
-          } else {
-            await publishPost(fbPage.pageId, content, null, fbPage.accessToken)
-          }
+          await sock.sendMessage(groupJid, { text: content } as any)
         }
-
-        await prisma.facebookPostLog.create({
-          data: { userId: fbPage.userId, pageId: fbPage.pageId, content, mediaUrls: mediaUrls ? JSON.stringify(mediaUrls) : null, status: 'success' },
-        })
-        await sock.sendMessage(sender, { text: `✅ Posted to ${fbPage.pageName || fbPage.pageId}\n${content.slice(0, 200)}` })
-        log('info', 'whatsapp', 'facebook_feed: post sent', { pageId: fbPage.pageId })
+        results.push(`✅ ${gName}`)
       } catch (err) {
-        await prisma.facebookPostLog.create({
-          data: { userId: fbPage.userId, pageId: fbPage.pageId, content: fbContent || '', status: 'failed', error: (err as Error).message },
-        })
-        await sock.sendMessage(sender, { text: `❌ Post failed: ${(err as Error).message}` })
-        log('error', 'whatsapp', 'facebook_feed: post failed', { error: (err as Error).message })
+        results.push(`❌ ${gName}: ${(err as Error).message}`)
       }
+    }
+    await sock.sendMessage(sender, { text: results.join('\n') })
+    return true
+  }
+
+  // ── ws group1, group2: content ── forward to WhatsApp group chats ──
+  const wsMatch = textContent.match(/^ws\s+(.+?):\s*(.*)/is)
+  if (wsMatch) {
+    const groupNames = wsMatch[1].split(',').map((s) => s.trim().toLowerCase())
+    const content = wsMatch[2] || ''
+    const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
+    if (groupNames.length === 0 || (!content && !hasMedia)) return true
+
+    const results: string[] = []
+
+    for (const gName of groupNames) {
+      const waGroup = Object.entries(allGroups).find(([, meta]) => {
+        const subject = (meta as any).subject?.toLowerCase() || ''
+        if (subject !== gName) return false
+        return (meta as any).participants?.some(
+          (p: any) => myJids.includes(normalizeJid(p.id)) && p.admin
+        )
+      })
+      if (!waGroup) {
+        results.push(`❌ ${gName}: not found or not admin`)
+        log('warn', 'whatsapp', 'whatsapp_groups: group not found or not admin', { gName })
+        continue
+      }
+      const groupJid = waGroup[0]
+      try {
+        const imageMsg = message.message?.imageMessage
+        if (imageMsg) {
+          const buffer = await downloadMediaMessage(message, 'buffer', {})
+          await sock.sendMessage(groupJid, { image: buffer, caption: content } as any)
+        } else if (message.message?.documentMessage) {
+          const buffer = await downloadMediaMessage(message, 'buffer', {})
+          await sock.sendMessage(groupJid, { document: buffer, caption: content, fileName: message.message.documentMessage.fileName || 'document' } as any)
+        } else {
+          await sock.sendMessage(groupJid, { text: content } as any)
+        }
+        results.push(`✅ ${gName}`)
+        log('info', 'whatsapp', 'whatsapp_groups: sent', { group: gName, jid: groupJid })
+      } catch (err) {
+        results.push(`❌ ${gName}: ${(err as Error).message}`)
+        log('error', 'whatsapp', 'whatsapp_groups: send failed', { group: gName, jid: groupJid, error: (err as Error).message })
+      }
+    }
+    await sock.sendMessage(sender, { text: results.join('\n') })
+    return true
+  }
+
+  // ── catch unrecognized ws commands ──
+  if (/^ws\s+/i.test(textContent)) {
+    await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nws get groups' })
+    return true
+  }
+
+  // ── fb: content / fb : content ── post to Facebook page ──
+  const fbPrefix = textContent.match(/^fb\s*:\s*(.*)/is)
+  if (!fbPrefix) return false
+  const fbContent = fbPrefix[1]
+  const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
+  if (!fbContent && !hasMedia) return true
+
+  const fbPage = await prisma.facebookPage.findFirst()
+  if (!fbPage) {
+    await sock.sendMessage(sender, { text: '❌ No Facebook page connected' })
+    log('warn', 'whatsapp', 'facebook_feed: no Facebook page connected')
+    return true
+  }
+
+  try {
+    const imageMsg = message.message?.imageMessage
+    let content = fbContent
+    let mediaUrls: string[] | null = null
+
+    if (imageMsg) {
+      const buffer = await downloadMediaMessage(message, 'buffer', {})
+      const fileName = `fb_${Date.now()}.jpg`
+      const filePath = path.resolve(process.cwd(), 'uploads', fileName)
+      fs.writeFileSync(filePath, buffer as Buffer)
+      content = imageMsg.caption || fbContent || ''
+      mediaUrls = [`${env.FRONTEND_URL.replace(/\/$/, '')}/uploads/${fileName}`]
+      await publishPost(fbPage.pageId, content, mediaUrls, fbPage.accessToken)
+    } else {
+      const docMsg = message.message?.documentMessage
+      if (docMsg) {
+        content = `${docMsg.caption || fbContent}\n\n${docMsg.fileName || 'document'}`
+        await publishPost(fbPage.pageId, content, null, fbPage.accessToken)
+      } else {
+        await publishPost(fbPage.pageId, content, null, fbPage.accessToken)
+      }
+    }
+
+    await prisma.facebookPostLog.create({
+      data: { userId: fbPage.userId, pageId: fbPage.pageId, content, mediaUrls: mediaUrls ? JSON.stringify(mediaUrls) : null, status: 'success' },
+    })
+    await sock.sendMessage(sender, { text: `✅ Posted to ${fbPage.pageName || fbPage.pageId}\n${content.slice(0, 200)}` })
+    log('info', 'whatsapp', 'facebook_feed: post sent', { pageId: fbPage.pageId })
+  } catch (err) {
+    await prisma.facebookPostLog.create({
+      data: { userId: fbPage.userId, pageId: fbPage.pageId, content: fbContent || '', status: 'failed', error: (err as Error).message },
+    })
+    await sock.sendMessage(sender, { text: `❌ Post failed: ${(err as Error).message}` })
+    log('error', 'whatsapp', 'facebook_feed: post failed', { error: (err as Error).message })
+  }
+  return true
+}
+
+async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promise<void> {
+  try {
+    const sender = message.key.remoteJid
+    if (!sender || sender.includes('status@broadcast')) return
+    const actualSender = message.key.participant || sender
+
+    const textContent =
+      message.message?.conversation ||
+      message.message?.extendedTextMessage?.text ||
+      message.message?.imageMessage?.caption ||
+      message.message?.videoMessage?.caption ||
+      message.message?.documentMessage?.caption ||
+      ''
+
+    // ── Handle fromMe messages → route by prefix ──────────────────────
+    if (message.key.fromMe) {
+      const normSender = normalizeJid(sender)
+      if (normSender !== ownPhone && normSender !== ownLid) return
+
+      const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
+      const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter((x): x is string => !!x)
+
+      await processCommands(sock, sender, textContent, message, allGroups, myJids)
+      // processCommands already sends replies; no further action needed
       return
+    }
+
+    // ── Gateway: process commands from allowed numbers in allowed groups ──
+    if (sender.endsWith('@g.us') && textContent.trim()) {
+      const normSender = normalizeJid(actualSender)
+      const isOwner = normSender === ownPhone || normSender === ownLid
+      let allowed = isOwner
+      if (!allowed) {
+        try {
+          const allowedNum = await prisma.allowedNumber.findUnique({ where: { phone: normSender } })
+          allowed = !!allowedNum
+        } catch { /* ignore */ }
+      }
+      if (allowed) {
+        const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
+        const groupMeta = allGroups[sender]
+        const groupName = (groupMeta as any)?.subject?.toLowerCase() || ''
+        if (groupName) {
+          try {
+            const allowedGrp = await prisma.allowedGroup.findUnique({ where: { name: groupName } })
+            if (allowedGrp) {
+              const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter((x): x is string => !!x)
+              const handled = await processCommands(sock, sender, textContent, message, allGroups, myJids)
+              if (handled) return
+            }
+          } catch { /* ignore */ }
+        }
+      }
     }
 
     const listResponse = message.message?.listResponseMessage

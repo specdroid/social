@@ -3,6 +3,7 @@ import { Smartphone, Link2, Unlink, Loader2, AlertCircle, Wifi, ChevronDown, Che
 import { useSocket } from '../hooks/useSocket'
 import { useApi } from '../hooks/useApi'
 import { SavedGroupListsPanel } from './SavedGroupListsPanel'
+import { GatewayPanel } from './GatewayPanel'
 
 interface ConnectionState {
   connected: boolean
@@ -932,6 +933,7 @@ export function WhatsAppLinker() {
       </div>
 
       {statusState === 'connected' && <SavedGroupListsPanel get={get} put={put} del={del} />}
+      {statusState === 'connected' && <GatewayPanel get={get} post={post} del={del} />}
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-md space-y-4">
         <button

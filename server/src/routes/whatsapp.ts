@@ -232,6 +232,57 @@ router.delete('/group-lists/:id', requireAuth, async (req: AuthRequest, res: Res
   }
 })
 
+// Gateway — Allowed Numbers & Allowed Groups
+router.get('/gateway/numbers', requireAuth, async (_req: AuthRequest, res: Response) => {
+  const numbers = await prisma.allowedNumber.findMany({ orderBy: { createdAt: 'desc' } })
+  res.json({ numbers })
+})
+
+router.post('/gateway/numbers', requireAuth, async (req: AuthRequest, res: Response) => {
+  const { phone } = req.body
+  if (!phone) { res.status(400).json({ error: 'phone is required' }); return }
+  try {
+    const entry = await prisma.allowedNumber.create({ data: { phone: String(phone) } })
+    res.json({ number: entry })
+  } catch {
+    res.status(409).json({ error: 'Number already exists' })
+  }
+})
+
+router.delete('/gateway/numbers/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    await prisma.allowedNumber.delete({ where: { id: String(req.params.id) } })
+    res.json({ ok: true })
+  } catch {
+    res.status(404).json({ error: 'Not found' })
+  }
+})
+
+router.get('/gateway/groups', requireAuth, async (_req: AuthRequest, res: Response) => {
+  const groups = await prisma.allowedGroup.findMany({ orderBy: { createdAt: 'desc' } })
+  res.json({ groups })
+})
+
+router.post('/gateway/groups', requireAuth, async (req: AuthRequest, res: Response) => {
+  const { name } = req.body
+  if (!name) { res.status(400).json({ error: 'name is required' }); return }
+  try {
+    const entry = await prisma.allowedGroup.create({ data: { name: String(name) } })
+    res.json({ group: entry })
+  } catch {
+    res.status(409).json({ error: 'Group already exists' })
+  }
+})
+
+router.delete('/gateway/groups/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    await prisma.allowedGroup.delete({ where: { id: String(req.params.id) } })
+    res.json({ ok: true })
+  } catch {
+    res.status(404).json({ error: 'Not found' })
+  }
+})
+
 router.get('/diagnostics', async (_req: Request, res: Response) => {
   const results: Record<string, unknown> = {}
 
