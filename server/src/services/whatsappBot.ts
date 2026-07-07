@@ -1146,6 +1146,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       message.message?.documentMessage?.caption ||
       ''
 
+    log('info', 'whatsapp', 'Incoming message', { sender, actualSender, fromMe: message.key.fromMe, text: textContent.slice(0, 100) })
+
     // ── Handle fromMe messages → route by prefix ──────────────────────
     if (message.key.fromMe) {
       const normSender = normalizeJid(sender)
@@ -1163,21 +1165,25 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
     if (sender.endsWith('@g.us') && textContent.trim()) {
       const normSender = normalizeJid(actualSender)
       const isOwner = normSender === ownPhone || normSender === ownLid
+      log('info', 'whatsapp', 'Gateway candidate', { normSender, isOwner })
       let allowed = isOwner
       if (!allowed) {
         try {
           const allowedNum = await prisma.allowedNumber.findUnique({ where: { phone: normSender } })
           allowed = !!allowedNum
+          log('info', 'whatsapp', 'Gateway allowed number check', { phone: normSender, allowed })
         } catch { /* ignore */ }
       }
       if (allowed) {
         const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
         const groupMeta = allGroups[sender]
         const groupName = (groupMeta as any)?.subject || ''
+        log('info', 'whatsapp', 'Gateway group check', { sender, groupName, foundInFetch: !!groupMeta })
         if (groupName) {
           try {
             const allAllowedGrps = await prisma.allowedGroup.findMany()
             const allowedGrp = allAllowedGrps.find(g => g.name.toLowerCase() === groupName.toLowerCase())
+            log('info', 'whatsapp', 'Gateway allowed group check', { name: groupName, allowed: !!allowedGrp })
             if (allowedGrp) {
               const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter((x): x is string => !!x)
               const handled = await processCommands(sock, sender, textContent, message, allGroups, myJids)

@@ -291,6 +291,15 @@ router.get('/gateway/available-groups', requireAuth, async (_req: AuthRequest, r
 
 router.get('/gateway/available-contacts', requireAuth, async (_req: AuthRequest, res: Response) => {
   const contacts = await getContacts()
+  const profile = getOwnProfile()
+  const ownerPhone = profile.ownPhone ? `961${profile.ownPhone}` : null
+  if (ownerPhone && !contacts.some(c => c.phoneNumber === ownerPhone)) {
+    contacts.unshift({
+      id: 'owner',
+      name: 'Account holder (you)',
+      phoneNumber: ownerPhone,
+    })
+  }
   res.json({ contacts })
 })
 
