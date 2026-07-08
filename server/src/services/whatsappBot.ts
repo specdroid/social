@@ -41,7 +41,8 @@ interface CreateRuleWizard {
   platform?: number
   triggerValues?: string[]
   contactJids?: string[]
-  savedGroupListNames?: string[]
+  contactGroupIds?: string[]
+  contactGroupNames?: string[]
   replyText?: string
   mediaTypeCode?: number
   step: number
@@ -908,6 +909,49 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
     log('info', 'whatsapp', 'isAllowedSender contactGroupId: no match')
     return false
   }
+  if (payload.contactGroupIds?.length) {
+    const groupIds = payload.contactGroupIds as string[]
+    const normSender = normalizeJid(sender)
+    for (const groupId of groupIds) {
+      const group = contactGroups.find(g => g.id === groupId)
+      if (!group) { log('info', 'whatsapp', 'isAllowedSender: contactGroupIds group not found', { groupId }); continue }
+      log('info', 'whatsapp', 'isAllowedSender contactGroupIds', { sender, normSender, groupId, groupName: group.name })
+
+      if (group.memberJids.some(m => normalizeJid(m) === normSender)) { log('info', 'whatsapp', 'isAllowedSender: contactGroupIds direct member match'); return true }
+      if (isGroup && group.memberJids.some(m => normalizeJid(m) === normalizeJid(remoteJid))) { log('info', 'whatsapp', 'isAllowedSender: contactGroupIds group chat match'); return true }
+      if (!isGroup && group.memberJids.some(m => normalizeJid(m) === normalizeJid(remoteJid))) { log('info', 'whatsapp', 'isAllowedSender: contactGroupIds individual remoteJid match'); return true }
+
+      // Resolve LID ↔ PN for this group
+      if (sender.endsWith('@lid')) {
+        try {
+          const resolvedPn = await (sock as any).signalRepository?.lidMapping?.getPNForLID(normSender)
+          if (resolvedPn) {
+            const resolvedNorm = normalizeJid(resolvedPn)
+            if (group.memberJids.some(m => normalizeJid(m) === resolvedNorm)) { log('info', 'whatsapp', 'isAllowedSender: contactGroupIds lidMapping PN match'); return true }
+          }
+        } catch { /* ignore */ }
+        try {
+          for (const memberJid of group.memberJids) {
+            if (!memberJid.endsWith('@s.whatsapp.net') && !memberJid.endsWith('@lid')) continue
+            const memberLid = await (sock as any).signalRepository?.lidMapping?.getLIDForPN(memberJid)
+            if (memberLid && normalizeJid(memberLid) === normSender) { log('info', 'whatsapp', 'isAllowedSender: contactGroupIds lidMapping LID match'); return true }
+          }
+        } catch { /* ignore */ }
+      }
+
+      const senderEntry = contactsArray.find(c =>
+        (c.lid && normalizeJid(c.lid) === normSender) || normalizeJid(c.id) === normSender
+      )
+      if (senderEntry) {
+        const contactIds = [normalizeJid(senderEntry.id)]
+        if (senderEntry.lid) contactIds.push(normalizeJid(senderEntry.lid))
+        if (senderEntry.phoneNumber) contactIds.push(normalizeJid(senderEntry.phoneNumber))
+        if (group.memberJids.some(m => contactIds.includes(normalizeJid(m)))) { log('info', 'whatsapp', 'isAllowedSender: contactGroupIds bridge match'); return true }
+      }
+    }
+    log('info', 'whatsapp', 'isAllowedSender contactGroupIds: no match')
+    return false
+  }
   return true
 }
 
@@ -979,24 +1023,26 @@ async function processCommands(
           ? raw.split(',').map(s => s.trim().replace(/\.\.\.$/, '').trim()).filter(Boolean).map(p => p.includes('@') ? p : p + '@s.whatsapp.net')
           : []
         wizard.step = 3
-        await sock.sendMessage(sender, { text: '👥 Saved groups? Send saved group list names in brackets, e.g. `[Exams, Schools ...]`\nOr send `[]` for none.' })
+        await sock.sendMessage(sender, { text: '👥 Contact groups? Send contact group names in brackets, e.g. `[Test, Schools ...]`\nOr send `[]` for none.' })
         return true
       }
       case 3: {
         if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
-          await sock.sendMessage(sender, { text: '❌ Send groups in brackets, e.g. `[Exams, Schools ...]`' })
+          await sock.sendMessage(sender, { text: `❌ Send contact group names in brackets, e.g. \`[Test, Schools ...]\`. Available: ${contactGroups.map(g => g.name).join(', ') || 'none'}` })
           return true
         }
         const names = parseBracketed(trimmed)
-        // Validate each name exists in DB
+        const resolvedIds: string[] = []
         for (const name of names) {
-          const exists = await prisma.savedGroupList.findUnique({ where: { name } })
-          if (!exists) {
-            await sock.sendMessage(sender, { text: `❌ Saved group list "${name}" not found in database.` })
+          const group = contactGroups.find(g => g.name.toLowerCase() === name.toLowerCase())
+          if (!group) {
+            await sock.sendMessage(sender, { text: `❌ Contact group "${name}" not found on server. Available: ${contactGroups.map(g => g.name).join(', ') || 'none'}` })
             return true
           }
+          resolvedIds.push(group.id)
         }
-        wizard.savedGroupListNames = names
+        wizard.contactGroupIds = resolvedIds
+        wizard.contactGroupNames = names
         wizard.step = 4
         await sock.sendMessage(sender, { text: '💬 Your autoreply? Send it in brackets, e.g. `[300$ after the discount]`' })
         return true
@@ -1028,7 +1074,7 @@ async function processCommands(
         const mediaType = mediaTypeMap[wizard.mediaTypeCode]
         const actionType = platform === 'facebook' ? 'facebook_feed' : 'send_dm'
 
-        const base = { replyText: wizard.replyText, contactJids: wizard.contactJids, savedGroupListNames: wizard.savedGroupListNames }
+        const base = { replyText: wizard.replyText, contactJids: wizard.contactJids, contactGroupIds: wizard.contactGroupIds }
         let actionPayload: string
         switch (mediaType) {
           case 'none':
@@ -1056,7 +1102,7 @@ async function processCommands(
           })
 
           const contactsStr = wizard.contactJids?.length ? wizard.contactJids.map(j => j.replace('@s.whatsapp.net', '')).join(', ') : 'none'
-          const groupsStr = wizard.savedGroupListNames?.length ? wizard.savedGroupListNames.join(', ') : 'none'
+          const groupsStr = wizard.contactGroupNames?.length ? wizard.contactGroupNames.join(', ') : 'none'
           await sock.sendMessage(sender, {
             text: `✅ Rule "${wizard.name}" created\nPlatform: ${platform}\nTriggers: ${wizard.triggerValues!.join(', ')}\nContacts: ${contactsStr}\nGroups: ${groupsStr}\nReply: ${wizard.replyText}\nMedia: ${mediaType}`,
           })
@@ -1648,7 +1694,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         continue
       }
 
-      let payload: { replyText?: string; mediaUrl?: string; mediaUrls?: string[]; mediaType?: string; fileName?: string; caption?: string; interactive?: boolean; options?: Array<{ id: string; label: string; reply: string }>; contactJid?: string; contactGroupId?: string; contactJids?: string[]; savedGroupListNames?: string[] }
+      let payload: { replyText?: string; mediaUrl?: string; mediaUrls?: string[]; mediaType?: string; fileName?: string; caption?: string; interactive?: boolean; options?: Array<{ id: string; label: string; reply: string }>; contactJid?: string; contactGroupId?: string; contactJids?: string[]; contactGroupIds?: string[] }
       try {
         payload = JSON.parse(rule.actionPayload)
       } catch {
