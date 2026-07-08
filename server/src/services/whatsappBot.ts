@@ -1006,6 +1006,7 @@ async function processCommands(
         }
         const names = parseBracketed(trimmed)
         const resolvedIds: string[] = []
+        const resolvedNames: string[] = []
         for (const name of names) {
           const group = contactGroups.find(g => g.name.toLowerCase() === name.toLowerCase())
           if (!group) {
@@ -1013,9 +1014,10 @@ async function processCommands(
             return true
           }
           resolvedIds.push(group.id)
+          resolvedNames.push(group.name)
         }
         wizard.contactGroupIds = resolvedIds
-        wizard.contactGroupNames = names
+        wizard.contactGroupNames = resolvedNames
         wizard.step = 4
         await sock.sendMessage(sender, { text: '💬 Your autoreply? Send it in brackets, e.g. `[300$ after the discount]`' })
         return true
@@ -1509,9 +1511,9 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
       const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter((x): x is string => !!x)
 
-      await processCommands(sock, sender, textContent, message, allGroups, myJids)
-      // processCommands already sends replies; no further action needed
-      return
+      const handled = await processCommands(sock, sender, textContent, message, allGroups, myJids)
+      if (handled) return
+      // Not a command — fall through so automation rules can process trigger words
     }
 
     // ── Gateway: process commands from allowed numbers in allowed groups ──
