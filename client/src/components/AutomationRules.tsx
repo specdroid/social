@@ -43,7 +43,9 @@ export function AutomationRules() {
     fileName: '',
     caption: '',
     contactJid: '',
+    contactJids: [] as string[],
     contactGroupId: '',
+    contactGroupIds: [] as string[],
     options: [] as Array<{ id: string; label: string; reply: string }>,
   })
   const [uploadLoading, setUploadLoading] = useState(false)
@@ -53,9 +55,12 @@ export function AutomationRules() {
   const [contactsLoading, setContactsLoading] = useState(false)
   const [groups, setGroups] = useState<Array<{ id: string; name: string; memberJids: string[] }>>([])
   const [importedContacts, setImportedContacts] = useState<Array<{ id: string; name?: string; phoneNumber?: string }>>([])
-  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [contactGroupSearch, setContactGroupSearch] = useState('')
   const [contactSearch, setContactSearch] = useState('')
-  const dropdownRef = useRef<HTMLDivElement>(null)
+  const [showContactPicker, setShowContactPicker] = useState(false)
+  const [showGroupPicker, setShowGroupPicker] = useState(false)
+  const contactPickerRef = useRef<HTMLDivElement>(null)
+  const groupPickerRef = useRef<HTMLDivElement>(null)
   const [postForm, setPostForm] = useState({
     platform: 'facebook',
     content: '',
@@ -106,36 +111,27 @@ export function AutomationRules() {
   }, [showForm, formData.platform])
 
   useEffect(() => {
-    if (!dropdownOpen) return
+    if (!showContactPicker && !showGroupPicker) return
     function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false)
+      if (contactPickerRef.current && !contactPickerRef.current.contains(e.target as Node)) {
+        setShowContactPicker(false)
         setContactSearch('')
+      }
+      if (groupPickerRef.current && !groupPickerRef.current.contains(e.target as Node)) {
+        setShowGroupPicker(false)
+        setContactGroupSearch('')
       }
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
-  }, [dropdownOpen])
-
-  const selectedLabel = (() => {
-    if (formData.contactGroupId) {
-      const g = groups.find(x => x.id === formData.contactGroupId)
-      return g ? g.name : 'Select a contact or group...'
-    }
-    if (formData.contactJid) {
-      const c = [...contacts, ...importedContacts].find(x => x.id === formData.contactJid)
-      if (c) return 'notify' in c ? (c.name || (c as any).notify || c.phoneNumber || c.id.replace('@s.whatsapp.net', '')) : (c.name || c.phoneNumber || c.id.replace('@s.whatsapp.net', ''))
-      return formData.contactJid.replace('@s.whatsapp.net', '')
-    }
-    return 'Select a contact or group...'
-  })()
+  }, [showContactPicker, showGroupPicker])
 
   function buildPayload(): string {
     const p: Record<string, unknown> = {}
     if (formData.actionType === 'facebook_feed') {
       p.actionType = 'facebook_feed'
-      if (formData.contactJid) p.contactJid = formData.contactJid
-      if (formData.contactGroupId) p.contactGroupId = formData.contactGroupId
+      if (formData.contactJids.length) p.contactJid = formData.contactJids[0]
+      if (formData.contactGroupIds.length) p.contactGroupId = formData.contactGroupIds[0]
     } else if (formData.mediaType === 'interactive') {
       p.interactive = true
       p.replyText = formData.replyText
@@ -149,8 +145,14 @@ export function AutomationRules() {
       if (formData.caption) p.caption = formData.caption
     }
     if (formData.actionType !== 'facebook_feed') {
-      if (formData.contactJid) p.contactJid = formData.contactJid
-      if (formData.contactGroupId) p.contactGroupId = formData.contactGroupId
+      if (formData.contactJids.length) {
+        p.contactJid = formData.contactJids[0]
+        p.contactJids = formData.contactJids
+      }
+      if (formData.contactGroupIds.length) {
+        p.contactGroupId = formData.contactGroupIds[0]
+        p.contactGroupIds = formData.contactGroupIds
+      }
     }
     return JSON.stringify(p)
   }
@@ -241,7 +243,9 @@ export function AutomationRules() {
       fileName: payload.fileName || '',
       caption: payload.caption || '',
       contactJid: payload.contactJid || '',
+      contactJids: payload.contactJids || (payload.contactJid ? [payload.contactJid] : []),
       contactGroupId: payload.contactGroupId || '',
+      contactGroupIds: payload.contactGroupIds || (payload.contactGroupId ? [payload.contactGroupId] : []),
       options: payload.options || [],
     })
     setShowForm(true)
@@ -270,7 +274,9 @@ export function AutomationRules() {
       fileName: '',
       caption: '',
       contactJid: '',
+      contactJids: [],
       contactGroupId: '',
+      contactGroupIds: [],
       options: [],
     })
   }
@@ -384,104 +390,184 @@ export function AutomationRules() {
               </div>
             )}
             {formData.platform === 'whatsapp' && (
-              <div className="relative" ref={dropdownRef}>
-                <label className="block text-sm text-zinc-400 mb-1">Contact / Group</label>
-                <button
-                  type="button"
-                  onClick={() => { setDropdownOpen(!dropdownOpen); if (!dropdownOpen) setContactSearch('') }}
-                  className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-50 focus:outline-none focus:border-zinc-500"
-                >
-                  <span className="truncate">{selectedLabel}</span>
-                  <ChevronDown className={`w-4 h-4 text-zinc-500 shrink-0 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-                {dropdownOpen && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl max-h-72 flex flex-col">
-                    <div className="p-2 border-b border-zinc-700/50">
-                      <div className="relative">
-                        <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                        <input
-                          type="text"
-                          value={contactSearch}
-                          onChange={(e) => setContactSearch(e.target.value)}
-                          placeholder="Search..."
-                          className="w-full pl-8 pr-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded-md text-xs text-zinc-50 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
-                          autoFocus
-                        />
-                      </div>
-                    </div>
-                    <div className="overflow-y-auto flex-1">
-                      {!contactSearch && (
-                        <button
-                          type="button"
-                          onClick={() => { setFormData({ ...formData, contactJid: '', contactGroupId: '' }); setDropdownOpen(false) }}
-                          className="w-full text-left px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-700/50 transition-colors"
-                        >
-                          None
-                        </button>
-                      )}
-                      {groups.length > 0 && (
-                        <div className="pt-1">
-                          <p className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Groups</p>
-                          {groups
-                            .filter(g => !contactSearch || g.name.toLowerCase().includes(contactSearch.toLowerCase()))
-                            .map(g => (
-                            <button
-                              key={`group:${g.id}`}
-                              type="button"
-                              onClick={() => { setFormData({ ...formData, contactJid: '', contactGroupId: g.id }); setDropdownOpen(false); setContactSearch('') }}
-                              className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${formData.contactGroupId === g.id ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-50 hover:bg-zinc-700/50'}`}
-                            >
-                              {g.name} <span className="text-zinc-500">({g.memberJids.length} members)</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {contacts.filter(c => !contactSearch || (c.name || c.notify || c.phoneNumber || c.id).toLowerCase().includes(contactSearch.toLowerCase())).length > 0 && (
-                        <div className="pt-1">
-                          <p className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Individual Contacts</p>
-                          {contacts
-                            .filter(c => !contactSearch || (c.name || c.notify || c.phoneNumber || c.id).toLowerCase().includes(contactSearch.toLowerCase()))
-                            .map(c => (
-                            <button
-                              key={c.id}
-                              type="button"
-                              onClick={() => { setFormData({ ...formData, contactJid: c.id, contactGroupId: '' }); setDropdownOpen(false); setContactSearch('') }}
-                              className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${formData.contactJid === c.id ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-50 hover:bg-zinc-700/50'}`}
-                            >
-                              {c.name || c.notify || c.phoneNumber?.replace('@s.whatsapp.net', '') || c.id.replace('@s.whatsapp.net', '')}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {importedContacts.filter(c => !contactSearch || (c.name || c.phoneNumber || c.id).toLowerCase().includes(contactSearch.toLowerCase())).length > 0 && (
-                        <div className="pt-1 pb-1">
-                          <p className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Imported Contacts</p>
-                          {importedContacts
-                            .filter(c => !contactSearch || (c.name || c.phoneNumber || c.id).toLowerCase().includes(contactSearch.toLowerCase()))
-                            .map(c => (
-                            <button
-                              key={c.id}
-                              type="button"
-                              onClick={() => { setFormData({ ...formData, contactJid: c.id, contactGroupId: '' }); setDropdownOpen(false); setContactSearch('') }}
-                              className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${formData.contactJid === c.id ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-50 hover:bg-zinc-700/50'}`}
-                            >
-                              {c.name || c.phoneNumber || c.id.replace('@s.whatsapp.net', '')}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {groups.length === 0 && contacts.length === 0 && importedContacts.length === 0 && !contactsLoading && (
-                        <p className="text-xs text-zinc-500 text-center py-4">No contacts or groups loaded.</p>
-                      )}
-                    </div>
+              <div className="space-y-3">
+                {contactsLoading && <p className="text-[11px] text-zinc-500">Loading contacts and groups...</p>}
+                {/* ── Contact Groups picker ── */}
+                <div>
+                  <label className="block text-sm text-zinc-400 mb-1">Contact Groups</label>
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {formData.contactGroupIds.map((gId) => {
+                      const g = groups.find(x => x.id === gId)
+                      return g ? (
+                        <span key={gId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-600/20 text-violet-300 text-xs rounded-full">
+                          {g.name}
+                          <button type="button" onClick={() => setFormData({ ...formData, contactGroupIds: formData.contactGroupIds.filter(id => id !== gId) })} className="hover:text-white">&times;</button>
+                        </span>
+                      ) : null
+                    })}
                   </div>
-                )}
-                {contacts.length === 0 && groups.length === 0 && !contactsLoading && !dropdownOpen && (
-                  <p className="text-[11px] text-zinc-500 mt-1">No contacts or groups loaded. Use the WhatsApp panel to fetch contacts first.</p>
-                )}
-                {contactsLoading && (
-                  <p className="text-[11px] text-zinc-500 mt-1">Loading contacts and groups...</p>
-                )}
+                  <div className="relative" ref={groupPickerRef}>
+                    <button
+                      type="button"
+                      onClick={() => { setShowGroupPicker(!showGroupPicker); if (!showGroupPicker) setContactGroupSearch('') }}
+                      className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-50 focus:outline-none focus:border-zinc-500"
+                    >
+                      <span className="text-xs text-zinc-400">Add contact groups...</span>
+                      <ChevronDown className={`w-4 h-4 text-zinc-500 shrink-0 transition-transform ${showGroupPicker ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showGroupPicker && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl max-h-60 flex flex-col">
+                        <div className="p-2 border-b border-zinc-700/50">
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            <input
+                              type="text"
+                              value={contactGroupSearch}
+                              onChange={(e) => setContactGroupSearch(e.target.value)}
+                              placeholder="Search groups..."
+                              className="w-full pl-8 pr-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded-md text-xs text-zinc-50 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                              autoFocus
+                            />
+                          </div>
+                        </div>
+                        <div className="overflow-y-auto flex-1">
+                          {groups.filter(g => !contactGroupSearch || g.name.toLowerCase().includes(contactGroupSearch.toLowerCase())).length === 0 && (
+                            <p className="text-xs text-zinc-500 text-center py-4">No groups found.</p>
+                          )}
+                          {groups
+                            .filter(g => !contactGroupSearch || g.name.toLowerCase().includes(contactGroupSearch.toLowerCase()))
+                            .map(g => {
+                              const selected = formData.contactGroupIds.includes(g.id)
+                              return (
+                                <button
+                                  key={g.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData({
+                                      ...formData,
+                                      contactGroupIds: selected
+                                        ? formData.contactGroupIds.filter(id => id !== g.id)
+                                        : [...formData.contactGroupIds, g.id],
+                                    })
+                                  }}
+                                  className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center gap-2 ${selected ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-50 hover:bg-zinc-700/50'}`}
+                                >
+                                  <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[8px] ${selected ? 'bg-violet-600 border-violet-600' : 'border-zinc-500'}`}>{selected ? '✓' : ''}</span>
+                                  {g.name} <span className="text-zinc-500">({g.memberJids.length} members)</span>
+                                </button>
+                              )
+                            })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* ── Contacts picker ── */}
+                <div>
+                  <label className="block text-sm text-zinc-400 mb-1">Contacts (phone numbers)</label>
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {formData.contactJids.map((jid) => {
+                      const c = [...contacts, ...importedContacts].find(x => x.id === jid)
+                      const label = c ? (c.name || (c as any).notify || c.phoneNumber || jid.replace('@s.whatsapp.net', '')) : jid.replace('@s.whatsapp.net', '')
+                      return (
+                        <span key={jid} className="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-600/20 text-violet-300 text-xs rounded-full">
+                          {label}
+                          <button type="button" onClick={() => setFormData({ ...formData, contactJids: formData.contactJids.filter(id => id !== jid) })} className="hover:text-white">&times;</button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                  <div className="relative" ref={contactPickerRef}>
+                    <button
+                      type="button"
+                      onClick={() => { setShowContactPicker(!showContactPicker); if (!showContactPicker) setContactSearch('') }}
+                      className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-50 focus:outline-none focus:border-zinc-500"
+                    >
+                      <span className="text-xs text-zinc-400">Add contacts...</span>
+                      <ChevronDown className={`w-4 h-4 text-zinc-500 shrink-0 transition-transform ${showContactPicker ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showContactPicker && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl max-h-60 flex flex-col">
+                        <div className="p-2 border-b border-zinc-700/50">
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            <input
+                              type="text"
+                              value={contactSearch}
+                              onChange={(e) => setContactSearch(e.target.value)}
+                              placeholder="Search contacts..."
+                              className="w-full pl-8 pr-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded-md text-xs text-zinc-50 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                              autoFocus
+                            />
+                          </div>
+                        </div>
+                        <div className="overflow-y-auto flex-1">
+                          {contacts.length === 0 && importedContacts.length === 0 && (
+                            <p className="text-xs text-zinc-500 text-center py-4">No contacts loaded. Use the WhatsApp panel to fetch contacts first.</p>
+                          )}
+                          {contacts.filter(c => !contactSearch || (c.name || c.notify || c.phoneNumber || c.id).toLowerCase().includes(contactSearch.toLowerCase())).length > 0 && (
+                            <div className="pt-1">
+                              <p className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">WhatsApp Contacts</p>
+                              {contacts
+                                .filter(c => !contactSearch || (c.name || c.notify || c.phoneNumber || c.id).toLowerCase().includes(contactSearch.toLowerCase()))
+                                .map(c => {
+                                  const selected = formData.contactJids.includes(c.id)
+                                  const label = c.name || c.notify || c.phoneNumber?.replace('@s.whatsapp.net', '') || c.id.replace('@s.whatsapp.net', '')
+                                  return (
+                                    <button
+                                      key={c.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setFormData({
+                                          ...formData,
+                                          contactJids: selected
+                                            ? formData.contactJids.filter(id => id !== c.id)
+                                            : [...formData.contactJids, c.id],
+                                        })
+                                      }}
+                                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center gap-2 ${selected ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-50 hover:bg-zinc-700/50'}`}
+                                    >
+                                      <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[8px] ${selected ? 'bg-violet-600 border-violet-600' : 'border-zinc-500'}`}>{selected ? '✓' : ''}</span>
+                                      {label}
+                                    </button>
+                                  )
+                                })}
+                            </div>
+                          )}
+                          {importedContacts.filter(c => !contactSearch || (c.name || c.phoneNumber || c.id).toLowerCase().includes(contactSearch.toLowerCase())).length > 0 && (
+                            <div className="pt-1 pb-1">
+                              <p className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Imported Contacts</p>
+                              {importedContacts
+                                .filter(c => !contactSearch || (c.name || c.phoneNumber || c.id).toLowerCase().includes(contactSearch.toLowerCase()))
+                                .map(c => {
+                                  const selected = formData.contactJids.includes(c.id)
+                                  const label = c.name || c.phoneNumber || c.id.replace('@s.whatsapp.net', '')
+                                  return (
+                                    <button
+                                      key={c.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setFormData({
+                                          ...formData,
+                                          contactJids: selected
+                                            ? formData.contactJids.filter(id => id !== c.id)
+                                            : [...formData.contactJids, c.id],
+                                        })
+                                      }}
+                                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center gap-2 ${selected ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-50 hover:bg-zinc-700/50'}`}
+                                    >
+                                      <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[8px] ${selected ? 'bg-violet-600 border-violet-600' : 'border-zinc-500'}`}>{selected ? '✓' : ''}</span>
+                                      {label}
+                                    </button>
+                                  )
+                                })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
             {!isFacebookFeed && (
