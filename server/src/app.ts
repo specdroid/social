@@ -73,6 +73,16 @@ export function createApp(): express.Application {
           example: 'ws get groups',
         },
         {
+          command: 'ws get rules',
+          description: 'List all active WhatsApp automation rule names.',
+          example: 'ws get rules',
+        },
+        {
+          command: 'ws get <rule name> triggers',
+          description: 'Show all trigger values for a specific rule.',
+          example: 'ws get welcome bot triggers',
+        },
+        {
           command: 'ws list <name>: <content>',
           description: 'Send a message to all groups in a saved list.',
           example: 'ws list schools: Hello everyone!',
