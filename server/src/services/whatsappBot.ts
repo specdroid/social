@@ -953,8 +953,80 @@ _Example:_ ws get group lists content
 Show this help
 _Example:_ -help
 
+🔹 *ws test rule: trigger*
+Test an automation rule
+_Example:_ ws test welcome bot: hello
+
 💡 Send commands as self-chat messages (message yourself)`,
       })
+    }
+    return true
+  }
+
+  // ── ws test [rule name]: trigger value ── test an automation rule ──
+  const testMatch = textContent.match(/^ws\s+test\s+(.+?):\s*(.*)/is)
+  if (testMatch) {
+    const ruleName = testMatch[1].trim()
+    const triggerValue = testMatch[2]?.trim() || ''
+    if (!ruleName) return true
+
+    try {
+      const rule = await prisma.automationRule.findFirst({
+        where: { name: ruleName, isActive: true, platform: 'whatsapp' },
+      })
+      if (!rule) {
+        await sock.sendMessage(sender, { text: `❌ Rule "${ruleName}" not found or inactive` })
+        return true
+      }
+
+      const triggers = rule.triggerValue.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
+      if (!triggers.some(t => triggerValue.toLowerCase().includes(t))) {
+        await sock.sendMessage(sender, { text: `⚠️ Trigger value "${triggerValue}" does not match rule triggers: ${triggers.join(', ')}` })
+        return true
+      }
+
+      let payload: any
+      try { payload = JSON.parse(rule.actionPayload) } catch { payload = { replyText: rule.actionPayload } }
+
+      const mediaUrls = payload.mediaUrls?.length ? payload.mediaUrls : (payload.mediaUrl ? [payload.mediaUrl] : [])
+      const content: any = payload.replyText || ''
+
+      if (payload.mediaType && mediaUrls.length > 0) {
+        const url = mediaUrls[0]
+        const caption = payload.caption || payload.replyText || ''
+        switch (payload.mediaType) {
+          case 'image':
+            await sock.sendMessage(sender, { image: { url }, caption } as any)
+            break
+          case 'video':
+            await sock.sendMessage(sender, { video: { url }, caption } as any)
+            break
+          case 'audio':
+            await sock.sendMessage(sender, { audio: { url }, mimetype: 'audio/mp4' } as any)
+            break
+          case 'document':
+            await sock.sendMessage(sender, { document: { url }, fileName: payload.fileName || 'document', caption } as any)
+            break
+        }
+      } else if (payload.interactive && payload.options) {
+        const list = {
+          title: payload.title || 'Select an option',
+          body: payload.body || 'Choose one:',
+          footer: payload.footer || '',
+          buttonText: payload.buttonText || 'Options',
+          sections: [{
+            title: 'Options',
+            rows: payload.options.map((o: any, i: number) => ({ title: o.label, rowId: o.id || String(i), description: o.reply?.slice(0, 72) }))
+          }]
+        }
+        await sock.sendMessage(sender, { interactive: { type: 'list', listMessage: list } } as any)
+      } else if (content) {
+        await sock.sendMessage(sender, { text: content } as any)
+      }
+
+      await sock.sendMessage(sender, { text: `✅ Test executed for rule "${ruleName}"` })
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ Test failed: ${(err as Error).message}` })
     }
     return true
   }

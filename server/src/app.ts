@@ -82,6 +82,11 @@ export function createApp(): express.Application {
           description: 'Show this help message.',
           example: '-help',
         },
+        {
+          command: 'ws test <rule name>: <trigger>',
+          description: 'Test an automation rule by simulating a trigger.',
+          example: 'ws test welcome bot: hello',
+        },
       ],
       note: 'All commands are sent as self-chat messages (message yourself).',
     })
