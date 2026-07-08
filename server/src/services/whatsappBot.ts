@@ -1150,7 +1150,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     // ── Handle fromMe messages → route by prefix ──────────────────────
     if (message.key.fromMe) {
-      const normSender = normalizeJid(sender)
+      const normSender = normalizeJid(actualSender)
       if (normSender !== ownPhone && normSender !== ownLid) return
 
       const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
