@@ -1156,17 +1156,18 @@ async function processCommands(
   }
 
   // ── ws get rules ──
-  if (/^ws get rules$/i.test(textContent.trim())) {
+  if (/^ws get (all )?rules$/i.test(textContent.trim())) {
+    const allMode = /all/i.test(textContent.trim())
     const rules = await prisma.automationRule.findMany({
-      where: { platform: 'whatsapp', isActive: true },
+      where: allMode ? { isActive: true } : { platform: 'whatsapp', isActive: true },
       orderBy: { name: 'asc' },
-      select: { name: true, triggerType: true, triggerValue: true },
+      select: { name: true, platform: true, triggerType: true, triggerValue: true },
     })
     if (rules.length === 0) {
-      await sock.sendMessage(sender, { text: 'No active WhatsApp automation rules.' })
+      await sock.sendMessage(sender, { text: allMode ? 'No active automation rules.' : 'No active WhatsApp automation rules.' })
       return true
     }
-    const lines = rules.map(r => `📋 *${r.name}* (${r.triggerType}: ${r.triggerValue})`)
+    const lines = rules.map(r => `📋 *${r.name}* [${r.platform || '?'}] (${r.triggerType}: ${r.triggerValue})`)
     await sock.sendMessage(sender, { text: lines.join('\n') })
     return true
   }
