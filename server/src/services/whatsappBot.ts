@@ -902,6 +902,43 @@ async function processCommands(
     return true
   }
 
+  // ── ws get rules ──
+  if (/^ws get rules$/i.test(textContent.trim())) {
+    const rules = await prisma.automationRule.findMany({
+      where: { platform: 'whatsapp', isActive: true },
+      orderBy: { name: 'asc' },
+      select: { name: true, triggerType: true, triggerValue: true },
+    })
+    if (rules.length === 0) {
+      await sock.sendMessage(sender, { text: 'No active WhatsApp automation rules.' })
+      return true
+    }
+    const lines = rules.map(r => `📋 *${r.name}* (${r.triggerType}: ${r.triggerValue})`)
+    await sock.sendMessage(sender, { text: lines.join('\n') })
+    return true
+  }
+
+  // ── ws get <rule name> triggers ──
+  const triggersMatch = textContent.match(/^ws get (.+?) triggers$/is)
+  if (triggersMatch) {
+    const ruleName = triggersMatch[1].trim()
+    const rule = await prisma.automationRule.findFirst({
+      where: { name: ruleName, platform: 'whatsapp', isActive: true },
+    })
+    if (!rule) {
+      await sock.sendMessage(sender, { text: `❌ Rule "${ruleName}" not found or inactive` })
+      return true
+    }
+    const triggers = rule.triggerValue.split(',').map(t => t.trim()).filter(Boolean)
+    if (triggers.length === 0) {
+      await sock.sendMessage(sender, { text: `⚠️ Rule "${ruleName}" has no triggers` })
+      return true
+    }
+    const lines = triggers.map(t => `• ${t}`)
+    await sock.sendMessage(sender, { text: `📋 Triggers for *${ruleName}*:\n${lines.join('\n')}` })
+    return true
+  }
+
   // ── -help ──
   if (/^-help$/i.test(textContent.trim())) {
     try {
@@ -921,25 +958,17 @@ async function processCommands(
       await sock.sendMessage(sender, {
         text: `📋 *Available Commands*
 
-🔹 *ws get groups*
-List your WhatsApp groups with admin status
-_Example:_ ws get groups
+🔹 *fb: content*
+Post to your Facebook page
+_Example:_ fb: Hello Facebook!
+
+🔹 *-help*
+Show this help
+_Example:_ -help
 
 🔹 *ws create name save gr1, gr2*
 Save a named group list
 _Example:_ ws create schools save exams, grade 7 a
-
-🔹 *ws list name: content*
-Send to groups in a saved list
-_Example:_ ws list schools: Hello!
-
-🔹 *ws gr1, gr2: content*
-Send directly to specific groups (admin required)
-_Example:_ ws my group: Hello!
-
-🔹 *fb: content*
-Post to your Facebook page
-_Example:_ fb: Hello Facebook!
 
 🔹 *ws get group lists*
 Show all saved group list names
@@ -949,9 +978,17 @@ _Example:_ ws get group lists
 Show all saved group lists with their groups
 _Example:_ ws get group lists content
 
-🔹 *-help*
-Show this help
-_Example:_ -help
+🔹 *ws get groups*
+List your WhatsApp groups with admin status
+_Example:_ ws get groups
+
+🔹 *ws gr1, gr2: content*
+Send directly to specific groups (admin required)
+_Example:_ ws my group: Hello!
+
+🔹 *ws list name: content*
+Send to groups in a saved list
+_Example:_ ws list schools: Hello!
 
 🔹 *ws test rule: trigger*
 Test an automation rule

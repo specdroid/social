@@ -43,29 +43,19 @@ export function createApp(): express.Application {
     res.json({
       commands: [
         {
-          command: 'ws get groups',
-          description: 'List all your WhatsApp groups with admin status.',
-          example: 'ws get groups',
-        },
-        {
-          command: 'ws create <name> save <group1>, <group2>, ...',
-          description: 'Save a named list of WhatsApp groups for reuse.',
-          example: 'ws create schools save exams, grade 7 a',
-        },
-        {
-          command: 'ws list <name>: <content>',
-          description: 'Send a message to all groups in a saved list.',
-          example: 'ws list schools: Hello everyone!',
-        },
-        {
-          command: 'ws <group1>, <group2>: <content>',
-          description: 'Send a message directly to specific WhatsApp groups (you must be admin).',
-          example: 'ws my group: Hello!',
+          command: '-help',
+          description: 'Show this help message.',
+          example: '-help',
         },
         {
           command: 'fb: <content>',
           description: 'Post a message to your connected Facebook page.',
           example: 'fb: Hello Facebook!',
+        },
+        {
+          command: 'ws create <name> save <group1>, <group2>, ...',
+          description: 'Save a named list of WhatsApp groups for reuse.',
+          example: 'ws create schools save exams, grade 7 a',
         },
         {
           command: 'ws get group lists',
@@ -78,14 +68,24 @@ export function createApp(): express.Application {
           example: 'ws get group lists content',
         },
         {
-          command: '-help',
-          description: 'Show this help message.',
-          example: '-help',
+          command: 'ws get groups',
+          description: 'List all your WhatsApp groups with admin status.',
+          example: 'ws get groups',
+        },
+        {
+          command: 'ws list <name>: <content>',
+          description: 'Send a message to all groups in a saved list.',
+          example: 'ws list schools: Hello everyone!',
         },
         {
           command: 'ws test <rule name>: <trigger>',
           description: 'Test an automation rule by simulating a trigger.',
           example: 'ws test welcome bot: hello',
+        },
+        {
+          command: 'ws <group1>, <group2>: <content>',
+          description: 'Send a message directly to specific WhatsApp groups (you must be admin).',
+          example: 'ws my group: Hello!',
         },
       ],
       note: 'All commands are sent as self-chat messages (message yourself).',
