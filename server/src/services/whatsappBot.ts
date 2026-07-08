@@ -36,6 +36,21 @@ interface ContactEntry {
   verifiedName?: string;
   phoneNumber?: string;
 }
+interface CreateRuleWizard {
+  name: string
+  platform?: number
+  triggerValues?: string[]
+  contactJids?: string[]
+  savedGroupListNames?: string[]
+  replyText?: string
+  mediaTypeCode?: number
+  step: number
+  createdAt: number
+}
+
+const createRuleWizards = new Map<string, CreateRuleWizard>()
+const WIZARD_TIMEOUT_MS = 5 * 60 * 1000
+
 const CONTACTS_FILE = path.join(AUTH_DIR, 'contacts.json')
 let contactsArray: ContactEntry[] = []
 function loadContactsFromDisk() {
@@ -904,6 +919,157 @@ async function processCommands(
   allGroups: Record<string, any>,
   myJids: string[],
 ): Promise<boolean> {
+  // ── Wizard: handle active create-rule wizard responses ──
+  if (createRuleWizards.has(sender)) {
+    const wizard = createRuleWizards.get(sender)!
+    if (Date.now() - wizard.createdAt > WIZARD_TIMEOUT_MS) {
+      createRuleWizards.delete(sender)
+      await sock.sendMessage(sender, { text: '⏰ Wizard timed out. Start again with `ws create rule <name>`.' })
+      return true
+    }
+    const trimmed = textContent.trim().toLowerCase()
+    if (trimmed === 'cancel' || trimmed === 'exit') {
+      createRuleWizards.delete(sender)
+      await sock.sendMessage(sender, { text: '❌ Wizard cancelled.' })
+      return true
+    }
+
+    const parseBracketed = (raw: string): string[] =>
+      raw.replace(/^\[|\]$/g, '').split(',').map(s => s.trim().replace(/\.\.\.$/, '').trim()).filter(Boolean)
+
+    const extractBracketContent = (raw: string): string | null => {
+      const m = raw.match(/^\[(.+)\]$/s)
+      return m ? m[1].trim() : null
+    }
+
+    switch (wizard.step) {
+      case 0: {
+        const num = parseInt(trimmed, 10)
+        if (isNaN(num) || num < 0 || num > 2) {
+          await sock.sendMessage(sender, { text: '❌ Invalid. Choose 0 for Facebook, 1 for Instagram, 2 for WhatsApp.' })
+          return true
+        }
+        wizard.platform = num
+        wizard.step = 1
+        await sock.sendMessage(sender, { text: '✏️ Trigger values? Send them in brackets, e.g. `[price, السعر ...]`' })
+        return true
+      }
+      case 1: {
+        if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
+          await sock.sendMessage(sender, { text: '❌ Send triggers in brackets, e.g. `[price, السعر ...]`' })
+          return true
+        }
+        const vals = parseBracketed(trimmed)
+        if (vals.length === 0) {
+          await sock.sendMessage(sender, { text: '❌ At least one trigger value is required.' })
+          return true
+        }
+        wizard.triggerValues = vals
+        wizard.step = 2
+        await sock.sendMessage(sender, { text: '📞 Contacts? Send phone numbers in brackets, e.g. `[70656517, 96176814597 ...]`\nOr send `[]` for none.' })
+        return true
+      }
+      case 2: {
+        if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
+          await sock.sendMessage(sender, { text: '❌ Send contacts in brackets, e.g. `[70656517, 96176814597 ...]`' })
+          return true
+        }
+        const raw = trimmed.replace(/^\[|\]$/g, '').trim()
+        wizard.contactJids = raw
+          ? raw.split(',').map(s => s.trim().replace(/\.\.\.$/, '').trim()).filter(Boolean).map(p => p.includes('@') ? p : p + '@s.whatsapp.net')
+          : []
+        wizard.step = 3
+        await sock.sendMessage(sender, { text: '👥 Saved groups? Send saved group list names in brackets, e.g. `[Exams, Schools ...]`\nOr send `[]` for none.' })
+        return true
+      }
+      case 3: {
+        if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
+          await sock.sendMessage(sender, { text: '❌ Send groups in brackets, e.g. `[Exams, Schools ...]`' })
+          return true
+        }
+        const names = parseBracketed(trimmed)
+        // Validate each name exists in DB
+        for (const name of names) {
+          const exists = await prisma.savedGroupList.findUnique({ where: { name } })
+          if (!exists) {
+            await sock.sendMessage(sender, { text: `❌ Saved group list "${name}" not found in database.` })
+            return true
+          }
+        }
+        wizard.savedGroupListNames = names
+        wizard.step = 4
+        await sock.sendMessage(sender, { text: '💬 Your autoreply? Send it in brackets, e.g. `[300$ after the discount]`' })
+        return true
+      }
+      case 4: {
+        const content = extractBracketContent(trimmed)
+        if (!content) {
+          await sock.sendMessage(sender, { text: '❌ Send autoreply in brackets, e.g. `[300$ after the discount]`' })
+          return true
+        }
+        wizard.replyText = content
+        wizard.step = 5
+        await sock.sendMessage(sender, { text: '🖼️ Media type? Choose a number:\n0 — Text only\n2 — Image\n3 — Video\n4 — Audio\n5 — Document' })
+        return true
+      }
+      case 5: {
+        const num = parseInt(trimmed, 10)
+        const validMedia = [0, 2, 3, 4, 5]
+        if (isNaN(num) || !validMedia.includes(num)) {
+          await sock.sendMessage(sender, { text: '❌ Invalid. Choose:\n0 — Text only\n2 — Image\n3 — Video\n4 — Audio\n5 — Document' })
+          return true
+        }
+        wizard.mediaTypeCode = num
+
+        // ── Create the rule ──
+        const platformMap: Record<number, string> = { 0: 'facebook', 1: 'instagram', 2: 'whatsapp' }
+        const mediaTypeMap: Record<number, string> = { 0: 'none', 2: 'image', 3: 'video', 4: 'audio', 5: 'document' }
+        const platform = platformMap[wizard.platform!]
+        const mediaType = mediaTypeMap[wizard.mediaTypeCode]
+        const actionType = platform === 'facebook' ? 'facebook_feed' : 'send_dm'
+
+        const base = { replyText: wizard.replyText, contactJids: wizard.contactJids, savedGroupListNames: wizard.savedGroupListNames }
+        let actionPayload: string
+        switch (mediaType) {
+          case 'none':
+            actionPayload = JSON.stringify(base)
+            break
+          default:
+            actionPayload = JSON.stringify({ ...base, mediaType, mediaUrls: [], caption: wizard.replyText })
+            break
+        }
+
+        try {
+          const user = await prisma.user.findFirst()
+          if (!user) throw new Error('No user found in database')
+
+          await prisma.automationRule.create({
+            data: {
+              userId: user.id,
+              name: wizard.name,
+              platform,
+              triggerType: 'keyword_comment',
+              triggerValue: wizard.triggerValues!.join(', '),
+              actionType,
+              actionPayload,
+            },
+          })
+
+          const contactsStr = wizard.contactJids?.length ? wizard.contactJids.map(j => j.replace('@s.whatsapp.net', '')).join(', ') : 'none'
+          const groupsStr = wizard.savedGroupListNames?.length ? wizard.savedGroupListNames.join(', ') : 'none'
+          await sock.sendMessage(sender, {
+            text: `✅ Rule "${wizard.name}" created\nPlatform: ${platform}\nTriggers: ${wizard.triggerValues!.join(', ')}\nContacts: ${contactsStr}\nGroups: ${groupsStr}\nReply: ${wizard.replyText}\nMedia: ${mediaType}`,
+          })
+        } catch (err) {
+          await sock.sendMessage(sender, { text: `❌ Failed to create rule: ${(err as Error).message}` })
+        }
+        createRuleWizards.delete(sender)
+        return true
+      }
+    }
+    return true
+  }
+
   // ── ws get groups ──
   if (/^ws get groups$/i.test(textContent.trim())) {
     const lines: string[] = []
@@ -1002,10 +1168,10 @@ _Example:_ fb: Hello Facebook!
 Show this help
 _Example:_ -help
 
-🔹 *ws create rule name platform [triggers] [[contacts], [groups]] [reply]*
-Create an automation rule (0=Facebook, 1=Instagram, 2=WhatsApp)
-Contacts: phone numbers. Groups: saved group list names.
-_Example:_ ws create rule Motorcycle 0 [price, السعر] [[96170621478, 70656517], [Exams, Schools]] [300$ after discount]
+🔹 *ws create rule name*
+Start an interactive wizard to create an automation rule
+The bot will ask for platform, triggers, contacts, groups, reply & media
+_Example:_ ws create rule Motorcycle
 
 🔹 *ws create name save gr1, gr2*
 Save a named group list
@@ -1109,104 +1275,21 @@ _Example:_ ws test welcome bot: hello
     return true
   }
 
-  // ── ws create rule <name> <platform> [triggers] [[contacts], [groups]] [reply] <mediaType?> ──
-  const createRuleMatch = textContent.match(/^ws create rule (\S+) (\d) \[(.+?)\] \[(\[.*?\])\s*,\s*(\[.*?\])\] \[(.+?)\](?:\s+(\d))?$/is)
+  // ── ws create rule <name> ── start wizard ──
+  const createRuleMatch = textContent.match(/^ws create rule (\S+)$/is)
   if (createRuleMatch) {
     const ruleName = createRuleMatch[1].trim()
-    const platformCode = parseInt(createRuleMatch[2], 10)
-    const triggersRaw = createRuleMatch[3]
-    const contactsRaw = createRuleMatch[4].replace(/^\[|\]$/g, '')
-    const groupsRaw = createRuleMatch[5].replace(/^\[|\]$/g, '')
-    const replyText = createRuleMatch[6].trim()
-    const mediaTypeCode = createRuleMatch[7] ? parseInt(createRuleMatch[7], 10) : 0
 
-    const platformMap: Record<number, string> = { 0: 'facebook', 1: 'instagram', 2: 'whatsapp' }
-    const platform = platformMap[platformCode]
-    if (!platform) {
-      await sock.sendMessage(sender, { text: '❌ Invalid platform. Use 0=Facebook, 1=Instagram, 2=WhatsApp' })
+    // Check if a wizard already exists
+    if (createRuleWizards.has(sender)) {
+      await sock.sendMessage(sender, { text: '⚠️ You already have an active wizard. Send `cancel` to abort, then start again.' })
       return true
     }
 
-    const triggerValues = triggersRaw.split(',').map(t => t.trim()).filter(Boolean)
-    if (triggerValues.length === 0) {
-      await sock.sendMessage(sender, { text: '❌ No trigger values provided' })
-      return true
-    }
-    if (!replyText) {
-      await sock.sendMessage(sender, { text: '❌ No reply text provided' })
-      return true
-    }
-
-    const mediaTypeMap: Record<number, string> = { 0: 'none', 1: 'interactive', 2: 'image', 3: 'audio', 4: 'video', 5: 'document' }
-    const mediaType = mediaTypeMap[mediaTypeCode]
-    if (mediaType === undefined) {
-      await sock.sendMessage(sender, { text: '❌ Invalid media type. Use 0=Text Only, 1=Interactive, 2=Image, 3=Audio, 4=Video, 5=Document' })
-      return true
-    }
-
-    const actionType = platform === 'facebook' ? 'facebook_feed' : 'send_dm'
-
-    const contactJids: string[] = contactsRaw
-      .split(',')
-      .map(s => s.trim().replace(/\.\.\.$/, '').trim())
-      .filter(Boolean)
-      .map(p => (p.includes('@') ? p : p + '@s.whatsapp.net'))
-
-    const savedGroupListNames: string[] = groupsRaw
-      .split(',')
-      .map(s => s.trim().replace(/\.\.\.$/, '').trim())
-      .filter(Boolean)
-
-    // Validate saved group list names exist
-    for (const name of savedGroupListNames) {
-      const exists = await prisma.savedGroupList.findUnique({ where: { name } })
-      if (!exists) {
-        await sock.sendMessage(sender, { text: `❌ Saved group list "${name}" not found in database` })
-        return true
-      }
-    }
-
-    let actionPayload: string
-    const base = { replyText, contactJids, savedGroupListNames }
-    switch (mediaType) {
-      case 'none':
-        actionPayload = JSON.stringify(base)
-        break
-      case 'interactive':
-        actionPayload = JSON.stringify({ ...base, interactive: true, options: [] })
-        break
-      default:
-        actionPayload = JSON.stringify({ ...base, mediaType, mediaUrls: [], caption: replyText })
-        break
-    }
-
-    try {
-      const user = await prisma.user.findFirst()
-      if (!user) {
-        await sock.sendMessage(sender, { text: '❌ No user found in database' })
-        return true
-      }
-
-      await prisma.automationRule.create({
-        data: {
-          userId: user.id,
-          name: ruleName,
-          platform,
-          triggerType: 'keyword_comment',
-          triggerValue: triggerValues.join(', '),
-          actionType,
-          actionPayload,
-        },
-      })
-
-      const contactsStr = contactJids.length ? contactJids.map(j => j.replace('@s.whatsapp.net', '')).join(', ') : 'none'
-      const groupsStr = savedGroupListNames.length ? savedGroupListNames.join(', ') : 'none'
-      await sock.sendMessage(sender, {
-        text: `✅ Rule "${ruleName}" created\nPlatform: ${platform}\nTriggers: ${triggerValues.join(', ')}\nContacts: ${contactsStr}\nGroups: ${groupsStr}\nReply: ${replyText}\nMedia: ${mediaType}`,
-      })
-    } catch (err) {
-      await sock.sendMessage(sender, { text: `❌ Failed to create rule: ${(err as Error).message}` })
-    }
+    createRuleWizards.set(sender, { name: ruleName, step: 0, createdAt: Date.now() })
+    await sock.sendMessage(sender, {
+      text: `Let's create rule "${ruleName}".\n\n🌐 Platform? Choose a number:\n0 — Facebook\n1 — Instagram\n2 — WhatsApp\n\n(Send \`cancel\` anytime to abort)`,
+    })
     return true
   }
 
