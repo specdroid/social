@@ -926,7 +926,7 @@ async function processCommands(
       where: { name: ruleName, platform: 'whatsapp', isActive: true },
     })
     if (!rule) {
-      await sock.sendMessage(sender, { text: `❌ Rule "${ruleName}" not found or inactive` })
+      await sock.sendMessage(sender, { text: `❌ Rule "${ruleName}" not found or inactive. Use \`ws create rule\` to create one.` })
       return true
     }
     const triggers = rule.triggerValue.split(',').map(t => t.trim()).filter(Boolean)
@@ -965,6 +965,10 @@ _Example:_ fb: Hello Facebook!
 🔹 *-help*
 Show this help
 _Example:_ -help
+
+🔹 *ws create rule name platform [triggers] [reply]*
+Create an automation rule (0=Facebook, 1=Instagram, 2=WhatsApp)
+_Example:_ ws create rule Motorcycle 0 [price, السعر] [300$ after discount]
 
 🔹 *ws create name save gr1, gr2*
 Save a named group list
@@ -1012,7 +1016,7 @@ _Example:_ ws test welcome bot: hello
         where: { name: ruleName, isActive: true, platform: 'whatsapp' },
       })
       if (!rule) {
-        await sock.sendMessage(sender, { text: `❌ Rule "${ruleName}" not found or inactive` })
+        await sock.sendMessage(sender, { text: `❌ Rule "${ruleName}" not found or inactive. Use \`ws create rule\` to create one.` })
         return true
       }
 
@@ -1064,6 +1068,70 @@ _Example:_ ws test welcome bot: hello
       await sock.sendMessage(sender, { text: `✅ Test executed for rule "${ruleName}"` })
     } catch (err) {
       await sock.sendMessage(sender, { text: `❌ Test failed: ${(err as Error).message}` })
+    }
+    return true
+  }
+
+  // ── ws create rule <name> <platform> [triggers] [reply] <mediaType?> ──
+  const createRuleMatch = textContent.match(/^ws create rule (\S+) (\d) \[(.+?)\] \[(.+?)\](?:\s+(\d))?$/is)
+  if (createRuleMatch) {
+    const ruleName = createRuleMatch[1].trim()
+    const platformCode = parseInt(createRuleMatch[2], 10)
+    const triggersRaw = createRuleMatch[3]
+    const replyText = createRuleMatch[4].trim()
+    const mediaTypeCode = createRuleMatch[5] ? parseInt(createRuleMatch[5], 10) : 0
+
+    const platformMap: Record<number, string> = { 0: 'facebook', 1: 'instagram', 2: 'whatsapp' }
+    const platform = platformMap[platformCode]
+    if (!platform) {
+      await sock.sendMessage(sender, { text: '❌ Invalid platform. Use 0=Facebook, 1=Instagram, 2=WhatsApp' })
+      return true
+    }
+
+    const triggerValues = triggersRaw.split(',').map(t => t.trim()).filter(Boolean)
+    if (triggerValues.length === 0) {
+      await sock.sendMessage(sender, { text: '❌ No trigger values provided' })
+      return true
+    }
+    if (!replyText) {
+      await sock.sendMessage(sender, { text: '❌ No reply text provided' })
+      return true
+    }
+
+    let actionPayload: string
+    switch (mediaTypeCode) {
+      case 0:
+        actionPayload = JSON.stringify({ replyText })
+        break
+      default:
+        await sock.sendMessage(sender, { text: `❌ Media type ${mediaTypeCode} not yet supported via command. Use 0 for Text Only, or edit via web UI.` })
+        return true
+    }
+
+    try {
+      const user = await prisma.user.findFirst()
+      if (!user) {
+        await sock.sendMessage(sender, { text: '❌ No user found in database' })
+        return true
+      }
+
+      await prisma.automationRule.create({
+        data: {
+          userId: user.id,
+          name: ruleName,
+          platform,
+          triggerType: 'keyword_comment',
+          triggerValue: triggerValues.join(', '),
+          actionType: 'reply',
+          actionPayload,
+        },
+      })
+
+      await sock.sendMessage(sender, {
+        text: `✅ Rule "${ruleName}" created\nPlatform: ${platform}\nTriggers: ${triggerValues.join(', ')}\nReply: ${replyText}`,
+      })
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ Failed to create rule: ${(err as Error).message}` })
     }
     return true
   }
