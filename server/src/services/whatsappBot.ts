@@ -934,7 +934,7 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
           if (!savedList) { log('info', 'whatsapp', 'isAllowedSender: savedGroupList not found', { listName }); continue }
           const groupNames: string[] = JSON.parse(savedList.groups)
           log('info', 'whatsapp', 'isAllowedSender savedGroupListNames', { sender, normSender, listName, groupNames, subject })
-          if (groupNames.some(g => g.toLowerCase() === subject.toLowerCase())) {
+          if (groupNames.some(g => g.toLowerCase().trim() === subject.toLowerCase().trim())) {
             log('info', 'whatsapp', 'isAllowedSender: savedGroupListNames match')
             return true
           }
@@ -1534,15 +1534,17 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     log('info', 'whatsapp', 'Incoming message', { sender, actualSender, fromMe: message.key.fromMe, text: textContent.slice(0, 100) })
 
+    let sharedAllGroups: Record<string, any> | undefined
+
     // ── Handle fromMe messages → route by prefix ──────────────────────
     if (message.key.fromMe) {
       const normSender = normalizeJid(actualSender)
       if (normSender !== ownPhone && normSender !== ownLid) return
 
-      const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
+      sharedAllGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
       const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter((x): x is string => !!x)
 
-      const handled = await processCommands(sock, sender, textContent, message, allGroups, myJids)
+      const handled = await processCommands(sock, sender, textContent, message, sharedAllGroups, myJids)
       if (handled) return
       // Not a command — fall through so automation rules can process trigger words
     }
@@ -1561,8 +1563,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         } catch { /* ignore */ }
       }
       if (allowed) {
-        const allGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
-        const groupMeta = allGroups[sender]
+        sharedAllGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
+        const groupMeta = sharedAllGroups[sender]
         const groupName = (groupMeta as any)?.subject || ''
         log('info', 'whatsapp', 'Gateway group check', { sender, groupName, foundInFetch: !!groupMeta })
         if (groupName) {
@@ -1572,7 +1574,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
             log('info', 'whatsapp', 'Gateway allowed group check', { name: groupName, allowed: !!allowedGrp })
             if (allowedGrp) {
               const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter((x): x is string => !!x)
-              const handled = await processCommands(sock, sender, textContent, message, allGroups, myJids)
+              const handled = await processCommands(sock, sender, textContent, message, sharedAllGroups, myJids)
               if (handled) return
             }
           } catch { /* ignore */ }
@@ -1609,7 +1611,6 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           },
         })
           log('info', 'whatsapp', 'Text menu: rules found', { count: rules.length })
-        const textMenuAllGroups = sender.endsWith('@g.us') ? await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>)) : undefined
         for (const rule of rules) {
           let payload: any
           try { payload = JSON.parse(rule.actionPayload) } catch {
@@ -1618,7 +1619,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           }
           log('info', 'whatsapp', 'Text menu: rule payload', { ruleId: rule.id, interactive: payload.interactive, optionsCount: payload.options?.length })
           if (!payload.interactive || !payload.options) continue
-          if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender, textMenuAllGroups)) {
+          if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender, sharedAllGroups)) {
             log('info', 'whatsapp', 'Text menu: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
             continue
           }
@@ -1643,7 +1644,6 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         },
       })
       log('info', 'whatsapp', 'Follow-up: rules found', { count: rules.length })
-      const followupAllGroups = sender.endsWith('@g.us') ? await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>)) : undefined
       for (const rule of rules) {
         let payload: any
         try { payload = JSON.parse(rule.actionPayload) } catch {
@@ -1654,7 +1654,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           log('info', 'whatsapp', 'Follow-up: not interactive', { ruleId: rule.id })
           continue
         }
-        if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender, followupAllGroups)) {
+        if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender, sharedAllGroups)) {
           log('info', 'whatsapp', 'Follow-up: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
           continue
         }
@@ -1683,8 +1683,6 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     if (!textContent) return
 
-    const allRulesAllGroups = sender.endsWith('@g.us') ? await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>)) : undefined
-
     const rules = await prisma.automationRule.findMany({
       where: {
         isActive: true,
@@ -1711,7 +1709,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         payload = { replyText: rule.actionPayload }
       }
 
-      if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender, allRulesAllGroups)) {
+      if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender, sharedAllGroups)) {
         log('info', 'whatsapp', 'Main: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
         continue
       }
