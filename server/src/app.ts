@@ -53,9 +53,9 @@ export function createApp(): express.Application {
           example: 'fb: Hello Facebook!',
         },
         {
-          command: 'ws create rule <name> <platform> [triggers] [contact/group] [reply] <mediaType?>',
-          description: 'Create an automation rule from WhatsApp. Platform: 0=Facebook, 1=Instagram, 2=WhatsApp. Contact/group: phone number or contact group name. Media type: 0=Text Only, 1=Interactive, 2=Image, 3=Audio, 4=Video, 5=Document (default 0). Brackets are mandatory around triggers, contact/group, and reply.',
-          example: 'ws create rule Motorcycle 0 [price, السعر] [96170621478] [300$ after the discount]',
+          command: 'ws create rule <name> <platform> [triggers] [[contacts], [groups]] [reply] <mediaType?>',
+          description: 'Create an automation rule from WhatsApp. Platform: 0=Facebook, 1=Instagram, 2=WhatsApp. Contacts list: phone numbers. Groups list: saved group list names. Media type: 0=Text Only, 1=Interactive, 2=Image, 3=Audio, 4=Video, 5=Document (default 0). Brackets are mandatory around each argument.',
+          example: 'ws create rule Motorcycle 0 [price, السعر] [[96170621478, 70656517], [Exams, Schools]] [300$ after the discount]',
         },
         {
           command: 'ws create <name> save <group1>, <group2>, ...',

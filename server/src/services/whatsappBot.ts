@@ -723,6 +723,43 @@ function normalizeJid(jid: string): string {
 }
 
 async function isAllowedSender(sock: any, sender: string, payload: any, isGroup = false, remoteJid = ''): Promise<boolean> {
+  // Check contactJids array (new format)
+  if (payload.contactJids?.length) {
+    const normSender = normalizeJid(sender)
+    for (const jid of payload.contactJids) {
+      const normContact = normalizeJid(jid)
+      log('info', 'whatsapp', 'isAllowedSender contactJids', { sender, normSender, jid, normContact, ownPhone, ownLid })
+
+      if (normSender === normContact) { log('info', 'whatsapp', 'isAllowedSender: direct match'); return true }
+
+      if (isGroup && ownPhone && ownLid) {
+        if (normSender === ownLid && normContact === ownPhone) { log('info', 'whatsapp', 'isAllowedSender: ownLid→ownPhone bridge'); return true }
+        if (normSender === ownPhone && normContact === ownLid) { log('info', 'whatsapp', 'isAllowedSender: ownPhone→ownLid bridge'); return true }
+      }
+
+      if (!isGroup && normalizeJid(remoteJid) === normContact) { log('info', 'whatsapp', 'isAllowedSender: individual chat remoteJid matches contactJid'); return true }
+
+      const contact = contactsArray.find(c =>
+        normalizeJid(c.id) === normContact || (c.lid && normalizeJid(c.lid) === normContact) || c.id === jid
+      )
+      if (contact) {
+        if (normalizeJid(contact.id) === normSender) { log('info', 'whatsapp', 'isAllowedSender: contact forward match', { contactId: contact.id }); return true }
+        if (contact.lid && normalizeJid(contact.lid) === normSender) { log('info', 'whatsapp', 'isAllowedSender: contact lid forward match', { contactId: contact.id, lid: contact.lid }); return true }
+      }
+
+      const senderContact = contactsArray.find(c =>
+        (c.lid && normalizeJid(c.lid) === normSender) || normalizeJid(c.id) === normSender
+      )
+      if (senderContact) {
+        if (normalizeJid(senderContact.id) === normContact) { log('info', 'whatsapp', 'isAllowedSender: reverse match', { contactId: senderContact.id }); return true }
+        if (senderContact.lid && normalizeJid(senderContact.lid) === normContact) { log('info', 'whatsapp', 'isAllowedSender: reverse lid match', { contactId: senderContact.id, lid: senderContact.lid }); return true }
+      }
+    }
+    log('info', 'whatsapp', 'isAllowedSender contactJids: no match', { normSender: normalizeJid(sender) })
+    return false
+  }
+
+  // Fallback: single contactJid (legacy format)
   if (payload.contactJid) {
     const normSender = normalizeJid(sender)
     const normContact = normalizeJid(payload.contactJid)
@@ -735,7 +772,6 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
       if (normSender === ownPhone && normContact === ownLid) { log('info', 'whatsapp', 'isAllowedSender: ownPhone→ownLid bridge'); return true }
     }
 
-    // For individual chats, the remoteJid is the chat partner; if it matches the contact, allow
     if (!isGroup && normalizeJid(remoteJid) === normContact) { log('info', 'whatsapp', 'isAllowedSender: individual chat remoteJid matches contactJid'); return true }
 
     const contact = contactsArray.find(c =>
@@ -966,10 +1002,10 @@ _Example:_ fb: Hello Facebook!
 Show this help
 _Example:_ -help
 
-🔹 *ws create rule name platform [triggers] [contact/group] [reply]*
+🔹 *ws create rule name platform [triggers] [[contacts], [groups]] [reply]*
 Create an automation rule (0=Facebook, 1=Instagram, 2=WhatsApp)
-Contact/group: phone number or contact group name
-_Example:_ ws create rule Motorcycle 0 [price, السعر] [96170621478] [300$ after discount]
+Contacts: phone numbers. Groups: saved group list names.
+_Example:_ ws create rule Motorcycle 0 [price, السعر] [[96170621478, 70656517], [Exams, Schools]] [300$ after discount]
 
 🔹 *ws create name save gr1, gr2*
 Save a named group list
@@ -1073,15 +1109,16 @@ _Example:_ ws test welcome bot: hello
     return true
   }
 
-  // ── ws create rule <name> <platform> [triggers] [contact/group] [reply] <mediaType?> ──
-  const createRuleMatch = textContent.match(/^ws create rule (\S+) (\d) \[(.+?)\] \[(.+?)\] \[(.+?)\](?:\s+(\d))?$/is)
+  // ── ws create rule <name> <platform> [triggers] [[contacts], [groups]] [reply] <mediaType?> ──
+  const createRuleMatch = textContent.match(/^ws create rule (\S+) (\d) \[(.+?)\] \[(\[.*?\])\s*,\s*(\[.*?\])\] \[(.+?)\](?:\s+(\d))?$/is)
   if (createRuleMatch) {
     const ruleName = createRuleMatch[1].trim()
     const platformCode = parseInt(createRuleMatch[2], 10)
     const triggersRaw = createRuleMatch[3]
-    const contactRaw = createRuleMatch[4].trim()
-    const replyText = createRuleMatch[5].trim()
-    const mediaTypeCode = createRuleMatch[6] ? parseInt(createRuleMatch[6], 10) : 0
+    const contactsRaw = createRuleMatch[4].replace(/^\[|\]$/g, '')
+    const groupsRaw = createRuleMatch[5].replace(/^\[|\]$/g, '')
+    const replyText = createRuleMatch[6].trim()
+    const mediaTypeCode = createRuleMatch[7] ? parseInt(createRuleMatch[7], 10) : 0
 
     const platformMap: Record<number, string> = { 0: 'facebook', 1: 'instagram', 2: 'whatsapp' }
     const platform = platformMap[platformCode]
@@ -1109,34 +1146,37 @@ _Example:_ ws test welcome bot: hello
 
     const actionType = platform === 'facebook' ? 'facebook_feed' : 'send_dm'
 
-    let contactJid = ''
-    let contactGroupId = ''
+    const contactJids: string[] = contactsRaw
+      .split(',')
+      .map(s => s.trim().replace(/\.\.\.$/, '').trim())
+      .filter(Boolean)
+      .map(p => (p.includes('@') ? p : p + '@s.whatsapp.net'))
 
-    if (contactRaw) {
-      const stripped = contactRaw.replace(/\.\.\.$/, '').trim()
-      if (/^\+?\d+$/.test(stripped)) {
-        contactJid = stripped.includes('@') ? stripped : stripped + '@s.whatsapp.net'
-      } else {
-        const group = contactGroups.find(g => g.name.toLowerCase() === stripped.toLowerCase())
-        if (group) {
-          contactGroupId = group.id
-        } else {
-          await sock.sendMessage(sender, { text: `❌ Contact group "${stripped}" not found. Use a phone number or an existing contact group name.` })
-          return true
-        }
+    const savedGroupListNames: string[] = groupsRaw
+      .split(',')
+      .map(s => s.trim().replace(/\.\.\.$/, '').trim())
+      .filter(Boolean)
+
+    // Validate saved group list names exist
+    for (const name of savedGroupListNames) {
+      const exists = await prisma.savedGroupList.findUnique({ where: { name } })
+      if (!exists) {
+        await sock.sendMessage(sender, { text: `❌ Saved group list "${name}" not found in database` })
+        return true
       }
     }
 
     let actionPayload: string
+    const base = { replyText, contactJids, savedGroupListNames }
     switch (mediaType) {
       case 'none':
-        actionPayload = JSON.stringify({ replyText, contactJid, contactGroupId })
+        actionPayload = JSON.stringify(base)
         break
       case 'interactive':
-        actionPayload = JSON.stringify({ replyText, interactive: true, options: [], contactJid, contactGroupId })
+        actionPayload = JSON.stringify({ ...base, interactive: true, options: [] })
         break
       default:
-        actionPayload = JSON.stringify({ replyText, mediaType, mediaUrls: [], caption: replyText, contactJid, contactGroupId })
+        actionPayload = JSON.stringify({ ...base, mediaType, mediaUrls: [], caption: replyText })
         break
     }
 
@@ -1159,9 +1199,10 @@ _Example:_ ws test welcome bot: hello
         },
       })
 
-      const targetDesc = contactJid ? contactJid.replace('@s.whatsapp.net', '') : (contactGroupId ? `group: ${contactRaw}` : 'none')
+      const contactsStr = contactJids.length ? contactJids.map(j => j.replace('@s.whatsapp.net', '')).join(', ') : 'none'
+      const groupsStr = savedGroupListNames.length ? savedGroupListNames.join(', ') : 'none'
       await sock.sendMessage(sender, {
-        text: `✅ Rule "${ruleName}" created\nPlatform: ${platform}\nTriggers: ${triggerValues.join(', ')}\nTarget: ${targetDesc}\nReply: ${replyText}\nMedia: ${mediaType}`,
+        text: `✅ Rule "${ruleName}" created\nPlatform: ${platform}\nTriggers: ${triggerValues.join(', ')}\nContacts: ${contactsStr}\nGroups: ${groupsStr}\nReply: ${replyText}\nMedia: ${mediaType}`,
       })
     } catch (err) {
       await sock.sendMessage(sender, { text: `❌ Failed to create rule: ${(err as Error).message}` })
@@ -1524,7 +1565,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         continue
       }
 
-      let payload: { replyText?: string; mediaUrl?: string; mediaUrls?: string[]; mediaType?: string; fileName?: string; caption?: string; interactive?: boolean; options?: Array<{ id: string; label: string; reply: string }>; contactJid?: string; contactGroupId?: string }
+      let payload: { replyText?: string; mediaUrl?: string; mediaUrls?: string[]; mediaType?: string; fileName?: string; caption?: string; interactive?: boolean; options?: Array<{ id: string; label: string; reply: string }>; contactJid?: string; contactGroupId?: string; contactJids?: string[]; savedGroupListNames?: string[] }
       try {
         payload = JSON.parse(rule.actionPayload)
       } catch {
