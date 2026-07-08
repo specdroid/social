@@ -46,6 +46,7 @@ export function AutomationRules() {
     contactJids: [] as string[],
     contactGroupId: '',
     contactGroupIds: [] as string[],
+    savedGroupListNames: [] as string[],
     options: [] as Array<{ id: string; label: string; reply: string }>,
   })
   const [uploadLoading, setUploadLoading] = useState(false)
@@ -54,6 +55,7 @@ export function AutomationRules() {
   const [contacts, setContacts] = useState<Array<{ id: string; name?: string; notify?: string; phoneNumber?: string }>>([])
   const [contactsLoading, setContactsLoading] = useState(false)
   const [groups, setGroups] = useState<Array<{ id: string; name: string; memberJids: string[] }>>([])
+  const [savedGroupLists, setSavedGroupLists] = useState<Array<{ id: string; name: string; groups: string[] }>>([])
   const [importedContacts, setImportedContacts] = useState<Array<{ id: string; name?: string; phoneNumber?: string }>>([])
   const [contactGroupSearch, setContactGroupSearch] = useState('')
   const [contactSearch, setContactSearch] = useState('')
@@ -87,18 +89,21 @@ export function AutomationRules() {
   async function fetchContacts() {
     setContactsLoading(true)
     try {
-      const [cData, gData, iData] = await Promise.all([
+      const [cData, gData, iData, slData] = await Promise.all([
         get<{ contacts: Array<{ id: string; name?: string; notify?: string; phoneNumber?: string }> }>('/api/whatsapp/contacts'),
         get<{ groups: Array<{ id: string; name: string; memberJids: string[] }> }>('/api/whatsapp/contact-groups'),
         get<{ contacts: Array<{ id: string; name?: string; phoneNumber?: string }> }>('/api/whatsapp/contacts/imported'),
+        get<{ lists: Array<{ id: string; name: string; groups: string[] }> }>('/api/whatsapp/group-lists'),
       ])
       setContacts(cData.contacts || [])
       setGroups(gData.groups || [])
       setImportedContacts(iData.contacts || [])
+      setSavedGroupLists(slData.lists || [])
     } catch {
       setContacts([])
       setGroups([])
       setImportedContacts([])
+      setSavedGroupLists([])
     } finally {
       setContactsLoading(false)
     }
@@ -152,6 +157,9 @@ export function AutomationRules() {
       if (formData.contactGroupIds.length) {
         p.contactGroupId = formData.contactGroupIds[0]
         p.contactGroupIds = formData.contactGroupIds
+      }
+      if (formData.savedGroupListNames.length) {
+        p.savedGroupListNames = formData.savedGroupListNames
       }
     }
     return JSON.stringify(p)
@@ -246,6 +254,7 @@ export function AutomationRules() {
       contactJids: payload.contactJids || (payload.contactJid ? [payload.contactJid] : []),
       contactGroupId: payload.contactGroupId || '',
       contactGroupIds: payload.contactGroupIds || (payload.contactGroupId ? [payload.contactGroupId] : []),
+      savedGroupListNames: payload.savedGroupListNames || [],
       options: payload.options || [],
     })
     setShowForm(true)
@@ -277,6 +286,7 @@ export function AutomationRules() {
       contactJids: [],
       contactGroupId: '',
       contactGroupIds: [],
+      savedGroupListNames: [],
       options: [],
     })
   }
@@ -392,9 +402,9 @@ export function AutomationRules() {
             {formData.platform === 'whatsapp' && (
               <div className="space-y-3">
                 {contactsLoading && <p className="text-[11px] text-zinc-500">Loading contacts and groups...</p>}
-                {/* ── Contact Groups picker ── */}
+                {/* ── Groups picker (Contact Groups + Saved Group Lists) ── */}
                 <div>
-                  <label className="block text-sm text-zinc-400 mb-1">Contact Groups</label>
+                  <label className="block text-sm text-zinc-400 mb-1">Groups</label>
                   <div className="flex flex-wrap gap-1 mb-1.5">
                     {formData.contactGroupIds.map((gId) => {
                       const g = groups.find(x => x.id === gId)
@@ -405,6 +415,13 @@ export function AutomationRules() {
                         </span>
                       ) : null
                     })}
+                    {formData.savedGroupListNames.map((listName) => (
+                      <span key={listName} className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-full">
+                        {listName}
+                        <span className="text-[10px] text-emerald-500/70">list</span>
+                        <button type="button" onClick={() => setFormData({ ...formData, savedGroupListNames: formData.savedGroupListNames.filter(n => n !== listName) })} className="hover:text-white">&times;</button>
+                      </span>
+                    ))}
                   </div>
                   <div className="relative" ref={groupPickerRef}>
                     <button
@@ -412,7 +429,7 @@ export function AutomationRules() {
                       onClick={() => { setShowGroupPicker(!showGroupPicker); if (!showGroupPicker) setContactGroupSearch('') }}
                       className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-50 focus:outline-none focus:border-zinc-500"
                     >
-                      <span className="text-xs text-zinc-400">Add contact groups...</span>
+                      <span className="text-xs text-zinc-400">Add groups...</span>
                       <ChevronDown className={`w-4 h-4 text-zinc-500 shrink-0 transition-transform ${showGroupPicker ? 'rotate-180' : ''}`} />
                     </button>
                     {showGroupPicker && (
@@ -431,32 +448,65 @@ export function AutomationRules() {
                           </div>
                         </div>
                         <div className="overflow-y-auto flex-1">
-                          {groups.filter(g => !contactGroupSearch || g.name.toLowerCase().includes(contactGroupSearch.toLowerCase())).length === 0 && (
+                          {groups.filter(g => !contactGroupSearch || g.name.toLowerCase().includes(contactGroupSearch.toLowerCase())).length === 0 && savedGroupLists.filter(l => !contactGroupSearch || l.name.toLowerCase().includes(contactGroupSearch.toLowerCase())).length === 0 && (
                             <p className="text-xs text-zinc-500 text-center py-4">No groups found.</p>
                           )}
-                          {groups
-                            .filter(g => !contactGroupSearch || g.name.toLowerCase().includes(contactGroupSearch.toLowerCase()))
-                            .map(g => {
-                              const selected = formData.contactGroupIds.includes(g.id)
-                              return (
-                                <button
-                                  key={g.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setFormData({
-                                      ...formData,
-                                      contactGroupIds: selected
-                                        ? formData.contactGroupIds.filter(id => id !== g.id)
-                                        : [...formData.contactGroupIds, g.id],
-                                    })
-                                  }}
-                                  className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center gap-2 ${selected ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-50 hover:bg-zinc-700/50'}`}
-                                >
-                                  <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[8px] ${selected ? 'bg-violet-600 border-violet-600' : 'border-zinc-500'}`}>{selected ? '✓' : ''}</span>
-                                  {g.name} <span className="text-zinc-500">({g.memberJids.length} members)</span>
-                                </button>
-                              )
-                            })}
+                          {groups.filter(g => !contactGroupSearch || g.name.toLowerCase().includes(contactGroupSearch.toLowerCase())).length > 0 && (
+                            <div className="pt-1">
+                              <p className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Contact Groups</p>
+                              {groups
+                                .filter(g => !contactGroupSearch || g.name.toLowerCase().includes(contactGroupSearch.toLowerCase()))
+                                .map(g => {
+                                  const selected = formData.contactGroupIds.includes(g.id)
+                                  return (
+                                    <button
+                                      key={g.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setFormData({
+                                          ...formData,
+                                          contactGroupIds: selected
+                                            ? formData.contactGroupIds.filter(id => id !== g.id)
+                                            : [...formData.contactGroupIds, g.id],
+                                        })
+                                      }}
+                                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center gap-2 ${selected ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-50 hover:bg-zinc-700/50'}`}
+                                    >
+                                      <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[8px] ${selected ? 'bg-violet-600 border-violet-600' : 'border-zinc-500'}`}>{selected ? '✓' : ''}</span>
+                                      {g.name} <span className="text-zinc-500">({g.memberJids.length} members)</span>
+                                    </button>
+                                  )
+                                })}
+                            </div>
+                          )}
+                          {savedGroupLists.filter(l => !contactGroupSearch || l.name.toLowerCase().includes(contactGroupSearch.toLowerCase())).length > 0 && (
+                            <div className="pt-1 pb-1">
+                              <p className="px-3 py-1 text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Group Lists</p>
+                              {savedGroupLists
+                                .filter(l => !contactGroupSearch || l.name.toLowerCase().includes(contactGroupSearch.toLowerCase()))
+                                .map(l => {
+                                  const selected = formData.savedGroupListNames.includes(l.name)
+                                  return (
+                                    <button
+                                      key={l.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setFormData({
+                                          ...formData,
+                                          savedGroupListNames: selected
+                                            ? formData.savedGroupListNames.filter(n => n !== l.name)
+                                            : [...formData.savedGroupListNames, l.name],
+                                        })
+                                      }}
+                                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center gap-2 ${selected ? 'bg-emerald-600/20 text-emerald-300' : 'text-zinc-50 hover:bg-zinc-700/50'}`}
+                                    >
+                                      <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[8px] ${selected ? 'bg-emerald-600 border-emerald-600' : 'border-zinc-500'}`}>{selected ? '✓' : ''}</span>
+                                      {l.name} <span className="text-zinc-500">({l.groups.length} groups)</span>
+                                    </button>
+                                  )
+                                })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

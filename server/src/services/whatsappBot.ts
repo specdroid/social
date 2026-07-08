@@ -43,6 +43,7 @@ interface CreateRuleWizard {
   contactJids?: string[]
   contactGroupIds?: string[]
   contactGroupNames?: string[]
+  savedGroupListNames?: string[]
   replyText?: string
   mediaTypeCode?: number
   step: number
@@ -738,7 +739,7 @@ function normalizeJid(jid: string): string {
   return num.startsWith('961') ? num.slice(3) : num
 }
 
-async function isAllowedSender(sock: any, sender: string, payload: any, isGroup = false, remoteJid = ''): Promise<boolean> {
+async function isAllowedSender(sock: any, sender: string, payload: any, isGroup = false, remoteJid = '', allGroups?: Record<string, any>): Promise<boolean> {
   const normSender = normalizeJid(sender)
   let hasRestriction = false
 
@@ -921,6 +922,28 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
     }
   }
 
+  // Check savedGroupListNames — allow if current group matches any group in a saved list
+  if (payload.savedGroupListNames?.length) {
+    hasRestriction = true
+    if (isGroup && allGroups) {
+      const groupMeta = allGroups[remoteJid]
+      const subject = (groupMeta as any)?.subject || ''
+      for (const listName of payload.savedGroupListNames) {
+        try {
+          const savedList = await prisma.savedGroupList.findUnique({ where: { name: listName } })
+          if (!savedList) { log('info', 'whatsapp', 'isAllowedSender: savedGroupList not found', { listName }); continue }
+          const groupNames: string[] = JSON.parse(savedList.groups)
+          log('info', 'whatsapp', 'isAllowedSender savedGroupListNames', { sender, normSender, listName, groupNames, subject })
+          if (groupNames.some(g => g.toLowerCase() === subject.toLowerCase())) {
+            log('info', 'whatsapp', 'isAllowedSender: savedGroupListNames match')
+            return true
+          }
+        } catch { continue }
+      }
+    }
+    log('info', 'whatsapp', 'isAllowedSender savedGroupListNames: no match', { isGroup, hasAllGroups: !!allGroups })
+  }
+
   if (hasRestriction) {
     log('info', 'whatsapp', 'isAllowedSender: all checks failed')
     return false
@@ -983,25 +1006,36 @@ async function processCommands(
           ? raw.split(',').map(s => s.trim().replace(/\.\.\.$/, '').trim()).filter(Boolean).map(p => p.includes('@') ? p : p + '@s.whatsapp.net')
           : []
         wizard.step = 3
-        await sock.sendMessage(sender, { text: '👥 Contact groups? Send names comma-separated, e.g. `Test, Schools`\nOr send `-` for none.' })
+        await sock.sendMessage(sender, { text: '👥 Groups (Contact Groups or Group Lists)? Send names comma-separated, e.g. `Test, school`\nOr send `-` for none.' })
         return true
       }
       case 3: {
         const raw = trimmed.replace(/^[-–—]+$/, '').trim()
         const names = raw ? parseCommaList(raw) : []
-        const resolvedIds: string[] = []
-        const resolvedNames: string[] = []
+        const resolvedContactGroupIds: string[] = []
+        const resolvedContactGroupNames: string[] = []
+        const resolvedSavedListNames: string[] = []
+        const allSavedLists = await prisma.savedGroupList.findMany()
         for (const name of names) {
-          const group = contactGroups.find(g => g.name.toLowerCase() === name.toLowerCase())
-          if (!group) {
-            await sock.sendMessage(sender, { text: `❌ Contact group "${name}" not found on server. Available: ${contactGroups.map(g => g.name).join(', ') || 'none'}` })
-            return true
+          const cg = contactGroups.find(g => g.name.toLowerCase() === name.toLowerCase())
+          if (cg) {
+            resolvedContactGroupIds.push(cg.id)
+            resolvedContactGroupNames.push(cg.name)
+            continue
           }
-          resolvedIds.push(group.id)
-          resolvedNames.push(group.name)
+          const sl = allSavedLists.find(l => l.name.toLowerCase() === name.toLowerCase())
+          if (sl) {
+            resolvedSavedListNames.push(sl.name)
+            continue
+          }
+          const contactGroupNames = contactGroups.map(g => g.name).join(', ') || 'none'
+          const savedListNames = allSavedLists.map(l => l.name).join(', ') || 'none'
+          await sock.sendMessage(sender, { text: `❌ Group "${name}" not found. Available Contact Groups: ${contactGroupNames}\nAvailable Group Lists: ${savedListNames}` })
+          return true
         }
-        wizard.contactGroupIds = resolvedIds
-        wizard.contactGroupNames = resolvedNames
+        wizard.contactGroupIds = resolvedContactGroupIds
+        wizard.contactGroupNames = resolvedContactGroupNames
+        wizard.savedGroupListNames = resolvedSavedListNames
         wizard.step = 4
         await sock.sendMessage(sender, { text: '💬 Your autoreply? Send the reply text (no brackets needed)' })
         return true
@@ -1041,6 +1075,9 @@ async function processCommands(
           base.contactGroupId = wizard.contactGroupIds[0]
           base.contactGroupIds = wizard.contactGroupIds
         }
+        if (wizard.savedGroupListNames?.length) {
+          base.savedGroupListNames = wizard.savedGroupListNames
+        }
         let actionPayload: string
         switch (mediaType) {
           case 'none':
@@ -1068,7 +1105,9 @@ async function processCommands(
           })
 
           const contactsStr = wizard.contactJids?.length ? wizard.contactJids.map(j => j.replace('@s.whatsapp.net', '')).join(', ') : 'none'
-          const groupsStr = wizard.contactGroupNames?.length ? wizard.contactGroupNames.join(', ') : 'none'
+          const contactGroupStr = wizard.contactGroupNames?.length ? wizard.contactGroupNames.join(', ') : ''
+          const savedListStr = wizard.savedGroupListNames?.length ? wizard.savedGroupListNames.join(', ') : ''
+          const groupsStr = [contactGroupStr, savedListStr].filter(Boolean).join(', ') || 'none'
           await sock.sendMessage(sender, {
             text: `✅ Rule "${wizard.name}" created\nPlatform: ${platform}\nTriggers: ${wizard.triggerValues!.join(', ')}\nContacts: ${contactsStr}\nGroups: ${groupsStr}\nReply: ${wizard.replyText}\nMedia: ${mediaType}`,
           })
@@ -1568,7 +1607,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
             triggerType: 'keyword_comment',
           },
         })
-        log('info', 'whatsapp', 'Text menu: rules found', { count: rules.length })
+          log('info', 'whatsapp', 'Text menu: rules found', { count: rules.length })
+        const textMenuAllGroups = sender.endsWith('@g.us') ? await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>)) : undefined
         for (const rule of rules) {
           let payload: any
           try { payload = JSON.parse(rule.actionPayload) } catch {
@@ -1577,7 +1617,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           }
           log('info', 'whatsapp', 'Text menu: rule payload', { ruleId: rule.id, interactive: payload.interactive, optionsCount: payload.options?.length })
           if (!payload.interactive || !payload.options) continue
-          if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender)) {
+          if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender, textMenuAllGroups)) {
             log('info', 'whatsapp', 'Text menu: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
             continue
           }
@@ -1602,6 +1642,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         },
       })
       log('info', 'whatsapp', 'Follow-up: rules found', { count: rules.length })
+      const followupAllGroups = sender.endsWith('@g.us') ? await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>)) : undefined
       for (const rule of rules) {
         let payload: any
         try { payload = JSON.parse(rule.actionPayload) } catch {
@@ -1612,7 +1653,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
           log('info', 'whatsapp', 'Follow-up: not interactive', { ruleId: rule.id })
           continue
         }
-        if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender)) {
+        if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender, followupAllGroups)) {
           log('info', 'whatsapp', 'Follow-up: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
           continue
         }
@@ -1641,6 +1682,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     if (!textContent) return
 
+    const allRulesAllGroups = sender.endsWith('@g.us') ? await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>)) : undefined
+
     const rules = await prisma.automationRule.findMany({
       where: {
         isActive: true,
@@ -1660,14 +1703,14 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         continue
       }
 
-      let payload: { replyText?: string; mediaUrl?: string; mediaUrls?: string[]; mediaType?: string; fileName?: string; caption?: string; interactive?: boolean; options?: Array<{ id: string; label: string; reply: string }>; contactJid?: string; contactGroupId?: string; contactJids?: string[]; contactGroupIds?: string[] }
+      let payload: { replyText?: string; mediaUrl?: string; mediaUrls?: string[]; mediaType?: string; fileName?: string; caption?: string; interactive?: boolean; options?: Array<{ id: string; label: string; reply: string }>; contactJid?: string; contactGroupId?: string; contactJids?: string[]; contactGroupIds?: string[]; savedGroupListNames?: string[] }
       try {
         payload = JSON.parse(rule.actionPayload)
       } catch {
         payload = { replyText: rule.actionPayload }
       }
 
-      if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender)) {
+      if (!await isAllowedSender(sock, actualSender, payload, sender.endsWith('@g.us'), sender, allRulesAllGroups)) {
         log('info', 'whatsapp', 'Main: sender not allowed for rule', { ruleId: rule.id, sender: actualSender })
         continue
       }
