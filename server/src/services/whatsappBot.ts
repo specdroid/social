@@ -1049,7 +1049,15 @@ async function processCommands(
         const mediaType = mediaTypeMap[wizard.mediaTypeCode]
         const actionType = platform === 'facebook' ? 'facebook_feed' : 'send_dm'
 
-        const base = { replyText: wizard.replyText, contactJids: wizard.contactJids, contactGroupIds: wizard.contactGroupIds }
+        const base: Record<string, any> = { replyText: wizard.replyText }
+        if (wizard.contactJids?.length) {
+          base.contactJid = wizard.contactJids[0]
+          base.contactJids = wizard.contactJids
+        }
+        if (wizard.contactGroupIds?.length) {
+          base.contactGroupId = wizard.contactGroupIds[0]
+          base.contactGroupIds = wizard.contactGroupIds
+        }
         let actionPayload: string
         switch (mediaType) {
           case 'none':
