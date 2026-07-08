@@ -739,9 +739,12 @@ function normalizeJid(jid: string): string {
 }
 
 async function isAllowedSender(sock: any, sender: string, payload: any, isGroup = false, remoteJid = ''): Promise<boolean> {
+  const normSender = normalizeJid(sender)
+  let hasRestriction = false
+
   // Check contactJids array (new format)
   if (payload.contactJids?.length) {
-    const normSender = normalizeJid(sender)
+    hasRestriction = true
     for (const jid of payload.contactJids) {
       const normContact = normalizeJid(jid)
       log('info', 'whatsapp', 'isAllowedSender contactJids', { sender, normSender, jid, normContact, ownPhone, ownLid })
@@ -771,13 +774,12 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
         if (senderContact.lid && normalizeJid(senderContact.lid) === normContact) { log('info', 'whatsapp', 'isAllowedSender: reverse lid match', { contactId: senderContact.id, lid: senderContact.lid }); return true }
       }
     }
-    log('info', 'whatsapp', 'isAllowedSender contactJids: no match', { normSender: normalizeJid(sender) })
-    return false
+    log('info', 'whatsapp', 'isAllowedSender contactJids: no match', { normSender })
   }
 
-  // Fallback: single contactJid (legacy format)
+  // Check single contactJid (legacy)
   if (payload.contactJid) {
-    const normSender = normalizeJid(sender)
+    hasRestriction = true
     const normContact = normalizeJid(payload.contactJid)
     log('info', 'whatsapp', 'isAllowedSender contactJid', { sender, normSender, contactJid: payload.contactJid, normContact, ownPhone, ownLid })
 
@@ -807,112 +809,12 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
     }
 
     log('info', 'whatsapp', 'isAllowedSender contactJid: no match', { normSender, normContact })
-    return false
   }
-  if (payload.contactGroupId) {
-    const group = contactGroups.find(g => g.id === payload.contactGroupId)
-    if (!group) { log('info', 'whatsapp', 'isAllowedSender: group not found', { groupId: payload.contactGroupId }); return false }
-    const normalizedSender = normalizeJid(sender)
-    log('info', 'whatsapp', 'isAllowedSender contactGroupId', { sender, normalizedSender, groupId: payload.contactGroupId, memberJids: group.memberJids, ownPhone, ownLid, contactsCount: contactsArray.length })
 
-    if (group.memberJids.some(m => normalizeJid(m) === normalizedSender)) { log('info', 'whatsapp', 'isAllowedSender: direct group member match'); return true }
-
-    // If the message is from a group chat whose JID is a member of this contact group, allow all senders
-    if (isGroup && group.memberJids.some(m => normalizeJid(m) === normalizeJid(remoteJid))) {
-      log('info', 'whatsapp', 'isAllowedSender: group chat is member of contact group, allowing', { remoteJid })
-      return true
-    }
-
-    // For individual chats, the remoteJid is the chat partner; if they're a member, allow
-    if (!isGroup && group.memberJids.some(m => normalizeJid(m) === normalizeJid(remoteJid))) {
-      log('info', 'whatsapp', 'isAllowedSender: individual chat remoteJid matches member', { remoteJid })
-      return true
-    }
-
-    // Resolve LID ↔ PN using the server-side lidMapping (can trigger USync query)
-    if (sender.endsWith('@lid')) {
-      try {
-        // Fast local lookup: try to get PN for the sender's LID
-        const resolvedPn = await (sock as any).signalRepository?.lidMapping?.getPNForLID(normalizedSender)
-        if (resolvedPn) {
-          const resolvedNorm = normalizeJid(resolvedPn)
-          log('info', 'whatsapp', 'isAllowedSender: lidMapping getPNForLID resolved', { normalizedSender, resolvedPn, resolvedNorm })
-          if (group.memberJids.some(m => normalizeJid(m) === resolvedNorm)) {
-            log('info', 'whatsapp', 'isAllowedSender: lidMapping member PN match')
-            return true
-          }
-        }
-      } catch (err) {
-        log('warn', 'whatsapp', 'isAllowedSender: lidMapping getPNForLID error', { error: (err as Error).message })
-      }
-      // If local lookup failed, try iterating members with getLIDForPN (can trigger USync query)
-      try {
-        for (const memberJid of group.memberJids) {
-          if (!memberJid.endsWith('@s.whatsapp.net') && !memberJid.endsWith('@lid')) continue
-          const memberLid = await (sock as any).signalRepository?.lidMapping?.getLIDForPN(memberJid)
-          if (memberLid) {
-            const normalizedMemberLid = normalizeJid(memberLid)
-            log('info', 'whatsapp', 'isAllowedSender: lidMapping getLIDForPN', { memberJid, memberLid, normalizedMemberLid, normalizedSender })
-            if (normalizedMemberLid === normalizedSender) {
-              log('info', 'whatsapp', 'isAllowedSender: lidMapping member LID match')
-              return true
-            }
-          }
-        }
-      } catch (err) {
-        log('warn', 'whatsapp', 'isAllowedSender: lidMapping getLIDForPN error', { error: (err as Error).message })
-      }
-    }
-
-    const senderEntry = contactsArray.find(c =>
-      (c.lid && normalizeJid(c.lid) === normalizedSender) || normalizeJid(c.id) === normalizedSender
-    )
-    log('info', 'whatsapp', 'isAllowedSender: senderEntry lookup', { found: !!senderEntry, entry: senderEntry ? { id: senderEntry.id, lid: senderEntry.lid, phoneNumber: senderEntry.phoneNumber } : null })
-    if (senderEntry) {
-      const contactIds = [normalizeJid(senderEntry.id)]
-      if (senderEntry.lid) contactIds.push(normalizeJid(senderEntry.lid))
-      if (senderEntry.phoneNumber) contactIds.push(normalizeJid(senderEntry.phoneNumber))
-      log('info', 'whatsapp', 'isAllowedSender: contactIds', { contactIds, checkMember: group.memberJids.map(m => normalizeJid(m)) })
-      if (group.memberJids.some(m => contactIds.includes(normalizeJid(m)))) { log('info', 'whatsapp', 'isAllowedSender: forward contacts bridge match'); return true }
-    }
-
-    for (const memberJid of group.memberJids) {
-      const normMember = normalizeJid(memberJid)
-      const memberEntry = contactsArray.find(c =>
-        normalizeJid(c.id) === normMember ||
-        (c.lid && normalizeJid(c.lid) === normMember) ||
-        (c.phoneNumber && normalizeJid(c.phoneNumber) === normMember)
-      )
-      log('info', 'whatsapp', 'isAllowedSender: reverse memberEntry', { memberJid, normalizedMember: normMember, found: !!memberEntry, entry: memberEntry ? { id: memberEntry.id, lid: memberEntry.lid, phoneNumber: memberEntry.phoneNumber } : null })
-      if (memberEntry) {
-        const memberIds = [normalizeJid(memberEntry.id)]
-        if (memberEntry.lid) memberIds.push(normalizeJid(memberEntry.lid))
-        if (memberEntry.phoneNumber) memberIds.push(normalizeJid(memberEntry.phoneNumber))
-        log('info', 'whatsapp', 'isAllowedSender: memberIds', { memberIds, normalizedSender })
-        if (memberIds.includes(normalizedSender)) { log('info', 'whatsapp', 'isAllowedSender: reverse contacts bridge match'); return true }
-      }
-    }
-
-    // ownLid bridge only applies when the group chat is a member of this contact group
-    const groupJidNorm = normalizeJid(remoteJid)
-    const isRelevantGroup = group.memberJids.some(m => normalizeJid(m) === groupJidNorm)
-    if (isGroup && ownPhone && ownLid && isRelevantGroup) {
-      log('info', 'whatsapp', 'isAllowedSender: ownPhone/ownLid bridge check', { normalizedSender, ownLid, ownPhone, membersNorm: group.memberJids.map(m => normalizeJid(m)) })
-      if (normalizedSender === ownLid && group.memberJids.some(m => normalizeJid(m) === ownPhone)) { log('info', 'whatsapp', 'isAllowedSender: ownLid→ownPhone group bridge'); return true }
-      if (normalizedSender === ownPhone && group.memberJids.some(m => normalizeJid(m) === ownLid)) { log('info', 'whatsapp', 'isAllowedSender: ownPhone→ownLid group bridge'); return true }
-      // Fallback: ownPhone ends with the member JID (missing country code prefix)
-      const phone = ownPhone
-      const membersNorm = group.memberJids.map(m => normalizeJid(m))
-      if (normalizedSender === ownLid && membersNorm.some(m => phone!.endsWith(m))) { log('info', 'whatsapp', 'isAllowedSender: ownLid→ownPhone suffix fallback'); return true }
-    }
-
-    log('info', 'whatsapp', 'isAllowedSender contactGroupId: no match')
-    return false
-  }
+  // Check contactGroupIds array (new format)
   if (payload.contactGroupIds?.length) {
-    const groupIds = payload.contactGroupIds as string[]
-    const normSender = normalizeJid(sender)
-    for (const groupId of groupIds) {
+    hasRestriction = true
+    for (const groupId of payload.contactGroupIds) {
       const group = contactGroups.find(g => g.id === groupId)
       if (!group) { log('info', 'whatsapp', 'isAllowedSender: contactGroupIds group not found', { groupId }); continue }
       log('info', 'whatsapp', 'isAllowedSender contactGroupIds', { sender, normSender, groupId, groupName: group.name })
@@ -921,7 +823,6 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
       if (isGroup && group.memberJids.some(m => normalizeJid(m) === normalizeJid(remoteJid))) { log('info', 'whatsapp', 'isAllowedSender: contactGroupIds group chat match'); return true }
       if (!isGroup && group.memberJids.some(m => normalizeJid(m) === normalizeJid(remoteJid))) { log('info', 'whatsapp', 'isAllowedSender: contactGroupIds individual remoteJid match'); return true }
 
-      // Resolve LID ↔ PN for this group
       if (sender.endsWith('@lid')) {
         try {
           const resolvedPn = await (sock as any).signalRepository?.lidMapping?.getPNForLID(normSender)
@@ -950,6 +851,78 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
       }
     }
     log('info', 'whatsapp', 'isAllowedSender contactGroupIds: no match')
+  }
+
+  // Check single contactGroupId (legacy)
+  if (payload.contactGroupId) {
+    hasRestriction = true
+    const group = contactGroups.find(g => g.id === payload.contactGroupId)
+    if (!group) { log('info', 'whatsapp', 'isAllowedSender: group not found', { groupId: payload.contactGroupId }) }
+    else {
+      const normalizedSender = normSender
+      log('info', 'whatsapp', 'isAllowedSender contactGroupId', { sender, normalizedSender, groupId: payload.contactGroupId, memberJids: group.memberJids, ownPhone, ownLid, contactsCount: contactsArray.length })
+
+      if (group.memberJids.some(m => normalizeJid(m) === normalizedSender)) { log('info', 'whatsapp', 'isAllowedSender: direct group member match'); return true }
+      if (isGroup && group.memberJids.some(m => normalizeJid(m) === normalizeJid(remoteJid))) { log('info', 'whatsapp', 'isAllowedSender: group chat is member of contact group, allowing', { remoteJid }); return true }
+      if (!isGroup && group.memberJids.some(m => normalizeJid(m) === normalizeJid(remoteJid))) { log('info', 'whatsapp', 'isAllowedSender: individual chat remoteJid matches member', { remoteJid }); return true }
+
+      if (sender.endsWith('@lid')) {
+        try {
+          const resolvedPn = await (sock as any).signalRepository?.lidMapping?.getPNForLID(normalizedSender)
+          if (resolvedPn) {
+            const resolvedNorm = normalizeJid(resolvedPn)
+            if (group.memberJids.some(m => normalizeJid(m) === resolvedNorm)) { log('info', 'whatsapp', 'isAllowedSender: lidMapping member PN match'); return true }
+          }
+        } catch { /* ignore */ }
+        try {
+          for (const memberJid of group.memberJids) {
+            if (!memberJid.endsWith('@s.whatsapp.net') && !memberJid.endsWith('@lid')) continue
+            const memberLid = await (sock as any).signalRepository?.lidMapping?.getLIDForPN(memberJid)
+            if (memberLid && normalizeJid(memberLid) === normalizedSender) { log('info', 'whatsapp', 'isAllowedSender: lidMapping member LID match'); return true }
+          }
+        } catch { /* ignore */ }
+      }
+
+      const senderEntry = contactsArray.find(c =>
+        (c.lid && normalizeJid(c.lid) === normalizedSender) || normalizeJid(c.id) === normalizedSender
+      )
+      if (senderEntry) {
+        const contactIds = [normalizeJid(senderEntry.id)]
+        if (senderEntry.lid) contactIds.push(normalizeJid(senderEntry.lid))
+        if (senderEntry.phoneNumber) contactIds.push(normalizeJid(senderEntry.phoneNumber))
+        if (group.memberJids.some(m => contactIds.includes(normalizeJid(m)))) { log('info', 'whatsapp', 'isAllowedSender: forward contacts bridge match'); return true }
+      }
+
+      for (const memberJid of group.memberJids) {
+        const normMember = normalizeJid(memberJid)
+        const memberEntry = contactsArray.find(c =>
+          normalizeJid(c.id) === normMember || (c.lid && normalizeJid(c.lid) === normMember) || (c.phoneNumber && normalizeJid(c.phoneNumber) === normMember)
+        )
+        if (memberEntry) {
+          const memberIds = [normalizeJid(memberEntry.id)]
+          if (memberEntry.lid) memberIds.push(normalizeJid(memberEntry.lid))
+          if (memberEntry.phoneNumber) memberIds.push(normalizeJid(memberEntry.phoneNumber))
+          if (memberIds.includes(normalizedSender)) { log('info', 'whatsapp', 'isAllowedSender: reverse contacts bridge match'); return true }
+        }
+      }
+
+      const groupJidNorm = normalizeJid(remoteJid)
+      const isRelevantGroup = group.memberJids.some(m => normalizeJid(m) === groupJidNorm)
+      if (isGroup && ownPhone && ownLid && isRelevantGroup) {
+        log('info', 'whatsapp', 'isAllowedSender: ownPhone/ownLid bridge check', { normalizedSender, ownLid, ownPhone, membersNorm: group.memberJids.map(m => normalizeJid(m)) })
+        if (normalizedSender === ownLid && group.memberJids.some(m => normalizeJid(m) === ownPhone)) { log('info', 'whatsapp', 'isAllowedSender: ownLid→ownPhone group bridge'); return true }
+        if (normalizedSender === ownPhone && group.memberJids.some(m => normalizeJid(m) === ownLid)) { log('info', 'whatsapp', 'isAllowedSender: ownPhone→ownLid group bridge'); return true }
+        const phone = ownPhone
+        const membersNorm = group.memberJids.map(m => normalizeJid(m))
+        if (normalizedSender === ownLid && membersNorm.some(m => phone!.endsWith(m))) { log('info', 'whatsapp', 'isAllowedSender: ownLid→ownPhone suffix fallback'); return true }
+      }
+
+      log('info', 'whatsapp', 'isAllowedSender contactGroupId: no match')
+    }
+  }
+
+  if (hasRestriction) {
+    log('info', 'whatsapp', 'isAllowedSender: all checks failed')
     return false
   }
   return true
