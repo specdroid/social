@@ -951,13 +951,8 @@ async function processCommands(
       return true
     }
 
-    const parseBracketed = (raw: string): string[] =>
-      raw.replace(/^\[|\]$/g, '').split(',').map(s => s.trim().replace(/\.\.\.$/, '').trim()).filter(Boolean)
-
-    const extractBracketContent = (raw: string): string | null => {
-      const m = raw.match(/^\[(.+)\]$/s)
-      return m ? m[1].trim() : null
-    }
+    const parseCommaList = (raw: string): string[] =>
+      raw.split(',').map(s => s.trim().replace(/\.\.\.$/, '').trim()).filter(Boolean)
 
     switch (wizard.step) {
       case 0: {
@@ -968,43 +963,32 @@ async function processCommands(
         }
         wizard.platform = num
         wizard.step = 1
-        await sock.sendMessage(sender, { text: '✏️ Trigger values? Send them in brackets, e.g. `[price, السعر ...]`' })
+        await sock.sendMessage(sender, { text: '✏️ Trigger values? Send comma-separated, e.g. `price, السعر`' })
         return true
       }
       case 1: {
-        if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
-          await sock.sendMessage(sender, { text: '❌ Send triggers in brackets, e.g. `[price, السعر ...]`' })
-          return true
-        }
-        const vals = parseBracketed(trimmed)
+        const vals = parseCommaList(trimmed)
         if (vals.length === 0) {
-          await sock.sendMessage(sender, { text: '❌ At least one trigger value is required.' })
+          await sock.sendMessage(sender, { text: '❌ At least one trigger value is required. Send comma-separated values, e.g. `price, السعر`' })
           return true
         }
         wizard.triggerValues = vals
         wizard.step = 2
-        await sock.sendMessage(sender, { text: '📞 Contacts? Send phone numbers in brackets, e.g. `[70656517, 96176814597 ...]`\nOr send `[]` for none.' })
+        await sock.sendMessage(sender, { text: '📞 Contacts? Send phone numbers comma-separated, e.g. `70656517, 96176814597`\nOr send `-` for none.' })
         return true
       }
       case 2: {
-        if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
-          await sock.sendMessage(sender, { text: '❌ Send contacts in brackets, e.g. `[70656517, 96176814597 ...]`' })
-          return true
-        }
-        const raw = trimmed.replace(/^\[|\]$/g, '').trim()
+        const raw = trimmed.replace(/^[-–—]+$/, '').trim()
         wizard.contactJids = raw
           ? raw.split(',').map(s => s.trim().replace(/\.\.\.$/, '').trim()).filter(Boolean).map(p => p.includes('@') ? p : p + '@s.whatsapp.net')
           : []
         wizard.step = 3
-        await sock.sendMessage(sender, { text: '👥 Contact groups? Send contact group names in brackets, e.g. `[Test, Schools ...]`\nOr send `[]` for none.' })
+        await sock.sendMessage(sender, { text: '👥 Contact groups? Send names comma-separated, e.g. `Test, Schools`\nOr send `-` for none.' })
         return true
       }
       case 3: {
-        if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
-          await sock.sendMessage(sender, { text: `❌ Send contact group names in brackets, e.g. \`[Test, Schools ...]\`. Available: ${contactGroups.map(g => g.name).join(', ') || 'none'}` })
-          return true
-        }
-        const names = parseBracketed(trimmed)
+        const raw = trimmed.replace(/^[-–—]+$/, '').trim()
+        const names = raw ? parseCommaList(raw) : []
         const resolvedIds: string[] = []
         const resolvedNames: string[] = []
         for (const name of names) {
@@ -1019,16 +1003,15 @@ async function processCommands(
         wizard.contactGroupIds = resolvedIds
         wizard.contactGroupNames = resolvedNames
         wizard.step = 4
-        await sock.sendMessage(sender, { text: '💬 Your autoreply? Send it in brackets, e.g. `[300$ after the discount]`' })
+        await sock.sendMessage(sender, { text: '💬 Your autoreply? Send the reply text (no brackets needed)' })
         return true
       }
       case 4: {
-        const content = extractBracketContent(trimmed)
-        if (!content) {
-          await sock.sendMessage(sender, { text: '❌ Send autoreply in brackets, e.g. `[300$ after the discount]`' })
+        if (!trimmed) {
+          await sock.sendMessage(sender, { text: '❌ Reply text is required.' })
           return true
         }
-        wizard.replyText = content
+        wizard.replyText = trimmed
         wizard.step = 5
         await sock.sendMessage(sender, { text: '🖼️ Media type? Choose a number:\n0 — Text only\n2 — Image\n3 — Video\n4 — Audio\n5 — Document' })
         return true
