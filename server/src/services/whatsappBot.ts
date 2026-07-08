@@ -966,9 +966,10 @@ _Example:_ fb: Hello Facebook!
 Show this help
 _Example:_ -help
 
-🔹 *ws create rule name platform [triggers] [reply]*
+🔹 *ws create rule name platform [triggers] [contact/group] [reply]*
 Create an automation rule (0=Facebook, 1=Instagram, 2=WhatsApp)
-_Example:_ ws create rule Motorcycle 0 [price, السعر] [300$ after discount]
+Contact/group: phone number or contact group name
+_Example:_ ws create rule Motorcycle 0 [price, السعر] [96170621478] [300$ after discount]
 
 🔹 *ws create name save gr1, gr2*
 Save a named group list
@@ -1072,14 +1073,15 @@ _Example:_ ws test welcome bot: hello
     return true
   }
 
-  // ── ws create rule <name> <platform> [triggers] [reply] <mediaType?> ──
-  const createRuleMatch = textContent.match(/^ws create rule (\S+) (\d) \[(.+?)\] \[(.+?)\](?:\s+(\d))?$/is)
+  // ── ws create rule <name> <platform> [triggers] [contact/group] [reply] <mediaType?> ──
+  const createRuleMatch = textContent.match(/^ws create rule (\S+) (\d) \[(.+?)\] \[(.+?)\] \[(.+?)\](?:\s+(\d))?$/is)
   if (createRuleMatch) {
     const ruleName = createRuleMatch[1].trim()
     const platformCode = parseInt(createRuleMatch[2], 10)
     const triggersRaw = createRuleMatch[3]
-    const replyText = createRuleMatch[4].trim()
-    const mediaTypeCode = createRuleMatch[5] ? parseInt(createRuleMatch[5], 10) : 0
+    const contactRaw = createRuleMatch[4].trim()
+    const replyText = createRuleMatch[5].trim()
+    const mediaTypeCode = createRuleMatch[6] ? parseInt(createRuleMatch[6], 10) : 0
 
     const platformMap: Record<number, string> = { 0: 'facebook', 1: 'instagram', 2: 'whatsapp' }
     const platform = platformMap[platformCode]
@@ -1098,14 +1100,44 @@ _Example:_ ws test welcome bot: hello
       return true
     }
 
+    const mediaTypeMap: Record<number, string> = { 0: 'none', 1: 'interactive', 2: 'image', 3: 'audio', 4: 'video', 5: 'document' }
+    const mediaType = mediaTypeMap[mediaTypeCode]
+    if (mediaType === undefined) {
+      await sock.sendMessage(sender, { text: '❌ Invalid media type. Use 0=Text Only, 1=Interactive, 2=Image, 3=Audio, 4=Video, 5=Document' })
+      return true
+    }
+
+    const actionType = platform === 'facebook' ? 'facebook_feed' : 'send_dm'
+
+    let contactJid = ''
+    let contactGroupId = ''
+
+    if (contactRaw) {
+      const stripped = contactRaw.replace(/\.\.\.$/, '').trim()
+      if (/^\+?\d+$/.test(stripped)) {
+        contactJid = stripped.includes('@') ? stripped : stripped + '@s.whatsapp.net'
+      } else {
+        const group = contactGroups.find(g => g.name.toLowerCase() === stripped.toLowerCase())
+        if (group) {
+          contactGroupId = group.id
+        } else {
+          await sock.sendMessage(sender, { text: `❌ Contact group "${stripped}" not found. Use a phone number or an existing contact group name.` })
+          return true
+        }
+      }
+    }
+
     let actionPayload: string
-    switch (mediaTypeCode) {
-      case 0:
-        actionPayload = JSON.stringify({ replyText })
+    switch (mediaType) {
+      case 'none':
+        actionPayload = JSON.stringify({ replyText, contactJid, contactGroupId })
+        break
+      case 'interactive':
+        actionPayload = JSON.stringify({ replyText, interactive: true, options: [], contactJid, contactGroupId })
         break
       default:
-        await sock.sendMessage(sender, { text: `❌ Media type ${mediaTypeCode} not yet supported via command. Use 0 for Text Only, or edit via web UI.` })
-        return true
+        actionPayload = JSON.stringify({ replyText, mediaType, mediaUrls: [], caption: replyText, contactJid, contactGroupId })
+        break
     }
 
     try {
@@ -1122,13 +1154,14 @@ _Example:_ ws test welcome bot: hello
           platform,
           triggerType: 'keyword_comment',
           triggerValue: triggerValues.join(', '),
-          actionType: 'reply',
+          actionType,
           actionPayload,
         },
       })
 
+      const targetDesc = contactJid ? contactJid.replace('@s.whatsapp.net', '') : (contactGroupId ? `group: ${contactRaw}` : 'none')
       await sock.sendMessage(sender, {
-        text: `✅ Rule "${ruleName}" created\nPlatform: ${platform}\nTriggers: ${triggerValues.join(', ')}\nReply: ${replyText}`,
+        text: `✅ Rule "${ruleName}" created\nPlatform: ${platform}\nTriggers: ${triggerValues.join(', ')}\nTarget: ${targetDesc}\nReply: ${replyText}\nMedia: ${mediaType}`,
       })
     } catch (err) {
       await sock.sendMessage(sender, { text: `❌ Failed to create rule: ${(err as Error).message}` })
