@@ -42,53 +42,84 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
     browser = await puppeteer.launch({
       headless: true,
       executablePath,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
+      ],
     })
 
     const page = await browser.newPage()
+
+    // Anti-detection: override navigator.webdriver
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false })
+    })
+
     await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36'
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
     )
+    await page.setViewport({ width: 1366, height: 768 })
 
     const redirectUri = 'https://www.facebook.com/connect/login_success.html'
     const scope = 'pages_manage_posts,pages_read_engagement,pages_show_list'
 
-    const oauthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token,granted_scopes&scope=${encodeURIComponent(scope)}`
+    const oauthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token,granted_scopes&scope=${encodeURIComponent(scope)}&auth_type=rerequest`
 
     await page.goto(oauthUrl, { waitUntil: 'networkidle0', timeout: 30000 })
 
-    await page.waitForSelector('#email', { timeout: 10000 })
-    await page.type('#email', email)
-    await page.type('#pass', password)
-    await page.click('#loginbutton')
+    const currentUrl = page.url()
+    const pageTitle = await page.title()
+
+    // Try standard Facebook login form
+    const emailField = await page.waitForSelector('#email', { timeout: 8000 }).catch(() => null)
+    if (!emailField) {
+      return {
+        success: false,
+        error: `Could not find login form on Facebook. Current URL: ${currentUrl}, Page title: ${pageTitle}`,
+      }
+    }
+
+    await emailField.type(email, { delay: 50 })
+    const passField = await page.$('#pass')
+    if (passField) await passField.type(password, { delay: 50 })
+
+    const loginBtn = await page.$('#loginbutton, button[type="submit"], input[type="submit"]')
+    if (loginBtn) await loginBtn.click()
 
     await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }).catch(() => {})
+    // Short wait for redirects/consent to settle
+    await new Promise(r => setTimeout(r, 2000))
 
-    const currentUrl = page.url()
+    let finalUrl = page.url()
 
-    if (currentUrl.includes('login_attempt')) {
-      return { success: false, error: 'Facebook login failed. Check email/password or handle 2FA manually.' }
+    if (finalUrl.includes('login_attempt') || finalUrl.includes('checkpoint')) {
+      return { success: false, error: 'Facebook login failed or checkpoint triggered. Check email/password or handle 2FA manually.' }
     }
 
     let shortLivedToken = ''
-    const fragmentMatch = currentUrl.match(/access_token=([^&]+)/)
+    const fragmentMatch = finalUrl.match(/access_token=([^&]+)/)
     if (fragmentMatch) {
       shortLivedToken = fragmentMatch[1]
     }
 
+    // Handle consent screen if token not yet obtained
     if (!shortLivedToken) {
-      const consentButton = await page.$('[name="__CONFIRM__"], button[type="submit"], input[value*="Continue"]')
-      if (consentButton) {
-        await consentButton.click()
+      const consentBtn = await page.$('[name="__CONFIRM__"], button[type="submit"], input[value*="Continue"]')
+      if (consentBtn) {
+        await consentBtn.click()
         await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {})
-        const afterConsentUrl = page.url()
-        const afterMatch = afterConsentUrl.match(/access_token=([^&]+)/)
+        await new Promise(r => setTimeout(r, 1000))
+        finalUrl = page.url()
+        const afterMatch = finalUrl.match(/access_token=([^&]+)/)
         if (afterMatch) shortLivedToken = afterMatch[1]
       }
     }
 
     if (!shortLivedToken) {
-      return { success: false, error: 'Could not obtain access token from login flow.' }
+      return { success: false, error: `Could not obtain access token. Final URL: ${finalUrl}` }
     }
 
     const exchangeResult = await graphPost('/oauth/access_token', {
@@ -100,7 +131,7 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
 
     const longLivedToken = exchangeResult.access_token
     if (!longLivedToken) {
-      return { success: false, error: 'Failed to exchange for long-lived token.' }
+      return { success: false, error: `Failed to exchange for long-lived token: ${JSON.stringify(exchangeResult)}` }
     }
 
     const accountsResult = await graphPost('/me/accounts', {
