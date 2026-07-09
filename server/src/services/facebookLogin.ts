@@ -60,14 +60,14 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
     })
 
     await page.setUserAgent(
-      'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.0 Mobile Safari/537.36'
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
     )
-    await page.setViewport({ width: 412, height: 915 })
+    await page.setViewport({ width: 1366, height: 768 })
 
     const redirectUri = 'https://www.facebook.com/connect/login_success.html'
     const scope = 'pages_manage_posts,pages_read_engagement,pages_show_list'
 
-    const oauthUrl = `https://m.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token,granted_scopes&scope=${encodeURIComponent(scope)}&auth_type=rerequest`
+    const oauthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token,granted_scopes&scope=${encodeURIComponent(scope)}&auth_type=rerequest`
 
     log('info', 'meta_api', 'fb_login: navigating to OAuth URL')
     await page.goto(oauthUrl, { waitUntil: 'networkidle0', timeout: 30000 })
@@ -75,7 +75,7 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
 
     const currentUrl = page.url()
 
-    const emailField = await page.waitForSelector('input[name="email"]', { timeout: 15000 }).catch(() => null)
+    const emailField = await page.waitForSelector('#email', { timeout: 15000 }).catch(() => null)
     if (!emailField) {
       log('warn', 'meta_api', 'fb_login: email field not found', { url: currentUrl, title: await page.title() })
       return {
@@ -84,25 +84,50 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
       }
     }
     log('info', 'meta_api', 'fb_login: email field found, typing')
+    await emailField.type(email, { delay: 40 })
 
-    await emailField.type(email, { delay: 30 })
-
-    const passField = await page.waitForSelector('input[name="pass"]', { timeout: 5000 }).catch(() => null)
+    const passField = await page.waitForSelector('#pass', { timeout: 5000 }).catch(() => null)
     if (passField) {
       log('info', 'meta_api', 'fb_login: pass field found, typing')
-      await passField.type(password, { delay: 30 })
+      await passField.type(password, { delay: 40 })
     }
 
-    log('info', 'meta_api', 'fb_login: pressing Enter to submit')
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }).catch(() => {}),
-      page.keyboard.press('Enter'),
-    ])
+    await new Promise(r => setTimeout(r, 500))
 
-    await new Promise(r => setTimeout(r, 3000))
-    log('info', 'meta_api', 'fb_login: after submit', { url: page.url(), title: await page.title() })
+    log('info', 'meta_api', 'fb_login: clicking login button')
 
+    // Try clicking the login button first
+    const loginBtn = await page.$('#loginbutton, button[name="login"]')
+    if (loginBtn) {
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {}),
+        loginBtn.click(),
+      ])
+    }
+
+    await new Promise(r => setTimeout(r, 2000))
+
+    // If still on login page, try JS form submit
     let finalUrl = page.url()
+    if (finalUrl === currentUrl) {
+      log('info', 'meta_api', 'fb_login: trying JS form submit')
+      await page.evaluate('document.querySelector("form")?.submit()')
+      await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {})
+      await new Promise(r => setTimeout(r, 2000))
+      finalUrl = page.url()
+    }
+
+    // If still on login page, look for error messages
+    if (finalUrl === currentUrl) {
+      const pageText = await page.evaluate("document.body?.innerText?.slice(0, 1000) || ''") as string
+      log('warn', 'meta_api', 'fb_login: still on login page', { text: pageText.slice(0, 500) })
+      if (pageText.includes('incorrect') || pageText.includes('wrong') || pageText.includes("didn")) {
+        return { success: false, error: 'Facebook login failed: incorrect email or password.' }
+      }
+      return { success: false, error: 'Facebook login failed. Page still shows login form. Check email/password.' }
+    }
+
+    log('info', 'meta_api', 'fb_login: after submit', { url: finalUrl, title: await page.title() })
 
     if (finalUrl.includes('login_attempt') || finalUrl.includes('checkpoint')) {
       log('warn', 'meta_api', 'fb_login: login checkpoint triggered')
