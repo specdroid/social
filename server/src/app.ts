@@ -103,7 +103,7 @@ export function createApp(): express.Application {
           example: 'ws my group: Hello!',
         },
       ],
-      note: 'All commands are sent as self-chat messages (message yourself).',
+      note: 'All commands are sent as self-chat messages (message yourself). Append -h to any ws command for specific help (e.g. "ws create rule <name> -h").',
     })
   })
 

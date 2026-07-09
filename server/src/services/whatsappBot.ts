@@ -1122,6 +1122,10 @@ async function processCommands(
   }
 
   // ── ws get groups ──
+  if (/^ws get groups\s+(-h|--help|-H)$/i.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws get groups*\n\nList all your WhatsApp groups with admin status.\n\n_Example:_ ws get groups` })
+    return true
+  }
   if (/^ws get groups$/i.test(textContent.trim())) {
     const lines: string[] = []
     for (const [jid, meta] of Object.entries(allGroups)) {
@@ -1135,6 +1139,10 @@ async function processCommands(
   }
 
   // ── ws get group lists content / ws get group lists ──
+  if (/^ws get group lists( content)?\s+(-h|--help|-H)$/i.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws get group lists*\n\nShow all saved group list names.\n\n_Example:_ ws get group lists\n\n📋 *ws get group lists content*\n\nShow all saved group lists with their groups.\n\n_Example:_ ws get group lists content` })
+    return true
+  }
   if (/^ws get group lists( content)?$/i.test(textContent.trim())) {
     const showContent = /content$/i.test(textContent.trim())
     const lists = await prisma.savedGroupList.findMany({ orderBy: { createdAt: 'desc' } })
@@ -1156,6 +1164,10 @@ async function processCommands(
   }
 
   // ── ws get rules ──
+  if (/^ws get (all )?rules\s+(-h|--help|-H)$/i.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws get rules*\n\nList all active WhatsApp automation rule names.\n\n_Example:_ ws get rules\n\n📋 *ws get all rules*\n\nList all active automation rules across all platforms.\n\n_Example:_ ws get all rules` })
+    return true
+  }
   if (/^ws get (all )?rules$/i.test(textContent.trim())) {
     const allMode = /all/i.test(textContent.trim())
     const rules = await prisma.automationRule.findMany({
@@ -1173,6 +1185,10 @@ async function processCommands(
   }
 
   // ── ws get <rule name> triggers ──
+  if (/^ws get .+? triggers\s+(-h|--help|-H)$/i.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws get <rule name> triggers*\n\nShow all trigger values for a specific rule.\n\n_Example:_ ws get welcome bot triggers` })
+    return true
+  }
   const triggersMatch = textContent.match(/^ws get (.+?) triggers$/is)
   if (triggersMatch) {
     const ruleName = triggersMatch[1].trim()
@@ -1260,6 +1276,10 @@ _Example:_ ws test welcome bot: hello
   }
 
   // ── ws test [rule name]: trigger value ── test an automation rule ──
+  if (/^ws\s+test\s+(.+?):\s*(.*)\s+(-h|--help|-H)$/is.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws test <rule name>: <trigger>*\n\nTest an automation rule by simulating a trigger word.\n\n_Example:_ ws test welcome bot: hello` })
+    return true
+  }
   const testMatch = textContent.match(/^ws\s+test\s+(.+?):\s*(.*)/is)
   if (testMatch) {
     const ruleName = testMatch[1].trim()
@@ -1328,6 +1348,10 @@ _Example:_ ws test welcome bot: hello
   }
 
   // ── ws create rule <name> ── start wizard ──
+  if (/^ws create rule (\S+)\s+(-h|--help|-H)$/is.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws create rule <name>*\n\nStart an interactive wizard to create an automation rule. The bot will ask for platform, triggers, contacts, groups, reply & media.\n\n_Example:_ ws create rule Motorcycle` })
+    return true
+  }
   const createRuleMatch = textContent.match(/^ws create rule (\S+)$/is)
   if (createRuleMatch) {
     const ruleName = createRuleMatch[1].trim()
@@ -1346,6 +1370,10 @@ _Example:_ ws test welcome bot: hello
   }
 
   // ── ws create name save gr1, gr2, ... ── save a named group list ──
+  if (/^ws\s+create\s+.+?\s+save\s+.+?\s+(-h|--help|-H)$/is.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws create <name> save <gr1>, <gr2>, ...*\n\nSave a named list of WhatsApp groups for reuse.\n\n_Example:_ ws create schools save exams, grade 7 a` })
+    return true
+  }
   const createMatch = textContent.match(/^ws\s+create\s+(?:'(.+?)'\s+save\s+\[(.+?)\]|(.+?)\s+save\s+(.+))/is)
   if (createMatch) {
     const listName = (createMatch[1] || createMatch[3]).trim()
@@ -1366,6 +1394,10 @@ _Example:_ ws test welcome bot: hello
   }
 
   // ── ws list name: content ── send to groups in a saved list ──
+  if (/^ws\s+list\s+.+?:\s*(.*)\s+(-h|--help|-H)$/is.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws list <name>: <content>*\n\nSend a message to all groups in a saved list.\n\n_Example:_ ws list schools: Hello everyone!` })
+    return true
+  }
   const listMatch = textContent.match(/^ws\s+list\s+(.+?):\s*(.*)/is)
   if (listMatch) {
     const listName = listMatch[1].trim()
@@ -1415,6 +1447,10 @@ _Example:_ ws test welcome bot: hello
   }
 
   // ── ws group1, group2: content ── forward to WhatsApp group chats ──
+  if (/^ws\s+(.+?):\s*(.*)\s+(-h|--help|-H)$/is.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws <group1>, <group2>: <content>*\n\nSend a message directly to specific WhatsApp groups (you must be admin).\n\n_Example:_ ws my group: Hello!` })
+    return true
+  }
   const wsMatch = textContent.match(/^ws\s+(.+?):\s*(.*)/is)
   if (wsMatch) {
     const groupNames = wsMatch[1].split(',').map((s) => s.trim().toLowerCase())
@@ -1457,6 +1493,23 @@ _Example:_ ws test welcome bot: hello
       }
     }
     await sock.sendMessage(sender, { text: results.join('\n') })
+    return true
+  }
+
+  // ── ws help / ws -h ──
+  if (/^ws\s+(-h|--help|-H|help)$/i.test(textContent.trim())) {
+    try {
+      const resp = await fetch(`${env.FRONTEND_URL}/api/help`)
+      const data = await resp.json() as { commands: Array<{ command: string; description: string; example: string }>; note: string }
+      const lines: string[] = ['📋 *Commands*\n']
+      for (const c of data.commands) {
+        lines.push(`🔹 *${c.command}*\n${c.description}\n_Example:_ ${c.example}`)
+      }
+      lines.push(`\n💡 ${data.note}`)
+      await sock.sendMessage(sender, { text: lines.join('\n\n') })
+    } catch {
+      await sock.sendMessage(sender, { text: '❌ Could not load help. Try: -help' })
+    }
     return true
   }
 
