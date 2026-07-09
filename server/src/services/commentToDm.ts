@@ -57,7 +57,7 @@ async function handleFeedChange(
   })
 
   for (const rule of rules) {
-    const triggers = rule.triggerValue.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
+    const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim().toLowerCase()).filter(Boolean)
     if (!triggers.some(t => message.includes(t))) continue
 
     const user = await prisma.user.findUnique({
@@ -110,7 +110,7 @@ async function handleMessagingEvent(
   })
 
   for (const rule of rules) {
-    const triggers = rule.triggerValue.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
+    const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim().toLowerCase()).filter(Boolean)
     if (!triggers.some(t => messageText.includes(t))) continue
 
     const user = await prisma.user.findUnique({

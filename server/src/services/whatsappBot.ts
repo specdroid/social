@@ -975,7 +975,7 @@ async function processCommands(
     }
 
     const parseCommaList = (raw: string): string[] =>
-      raw.split(',').map(s => s.trim().replace(/\.\.\.$/, '').trim()).filter(Boolean)
+      raw.split(/[,،]/).map(s => s.trim().replace(/\.\.\.$/, '').trim()).filter(Boolean)
 
     switch (wizard.step) {
       case 0: {
@@ -1183,7 +1183,7 @@ async function processCommands(
       await sock.sendMessage(sender, { text: `❌ Rule "${ruleName}" not found or inactive. Use \`ws create rule\` to create one.` })
       return true
     }
-    const triggers = rule.triggerValue.split(',').map(t => t.trim()).filter(Boolean)
+    const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim()).filter(Boolean)
     if (triggers.length === 0) {
       await sock.sendMessage(sender, { text: `⚠️ Rule "${ruleName}" has no triggers` })
       return true
@@ -1275,7 +1275,7 @@ _Example:_ ws test welcome bot: hello
         return true
       }
 
-      const triggers = rule.triggerValue.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
+      const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim().toLowerCase()).filter(Boolean)
       if (!triggers.some(t => triggerValue.toLowerCase().includes(t))) {
         await sock.sendMessage(sender, { text: `⚠️ Trigger value "${triggerValue}" does not match rule triggers: ${triggers.join(', ')}` })
         return true
@@ -1693,7 +1693,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     log('info', 'whatsapp', 'Main rules loop: rules found', { count: rules.length, sender, textContent: textContent.slice(0, 50) })
     for (const rule of rules) {
-      const triggers = rule.triggerValue.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
+      const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim().toLowerCase()).filter(Boolean)
       log('info', 'whatsapp', 'Main rules loop: checking rule', { name: rule.name, triggerValue: rule.triggerValue, triggers, textContent: textContent.slice(0, 50) })
       if (!triggers.some(t => textContent.toLowerCase().includes(t))) {
         log('info', 'whatsapp', 'Main rules loop: trigger no match', { name: rule.name, triggers })
