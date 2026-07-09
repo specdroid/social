@@ -99,28 +99,12 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
 
     await new Promise(r => setTimeout(r, 500))
 
-    // Submit login
-    log('info', 'meta_api', 'fb_login: submitting login')
-    const loginBtn = await page.$(loginBtnSelector)
-    if (loginBtn) {
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {}),
-        loginBtn.click(),
-      ])
-    } else {
-      const loginBtnAlt = await page.$('button[type="submit"], input[type="submit"]')
-      if (loginBtnAlt) {
-        await Promise.all([
-          page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {}),
-          loginBtnAlt.click(),
-        ])
-      } else {
-        await Promise.all([
-          page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {}),
-          page.keyboard.press('Enter'),
-        ])
-      }
-    }
+    // Submit login via Enter key
+    log('info', 'meta_api', 'fb_login: pressing Enter to submit')
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {}),
+      page.keyboard.press('Enter'),
+    ])
 
     await new Promise(r => setTimeout(r, 3000))
 
