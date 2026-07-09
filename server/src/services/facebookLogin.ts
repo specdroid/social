@@ -1,5 +1,6 @@
 import puppeteer from 'puppeteer'
 import { env } from '../config/env'
+import { existsSync } from 'fs'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v21.0'
 
@@ -7,6 +8,17 @@ interface LoginResult {
   success: boolean
   pages?: Array<{ pageId: string; pageName: string; accessToken: string }>
   error?: string
+}
+
+function findChrome(): string | undefined {
+  const candidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+  ]
+  return candidates.find(p => p && existsSync(p))
 }
 
 async function graphPost(endpoint: string, params: Record<string, string>): Promise<any> {
@@ -23,10 +35,13 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
     return { success: false, error: 'META_APP_ID and META_APP_SECRET must be set in .env' }
   }
 
+  const executablePath = findChrome()
+
   let browser
   try {
     browser = await puppeteer.launch({
       headless: true,
+      executablePath,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     })
 
