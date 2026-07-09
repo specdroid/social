@@ -73,8 +73,13 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
     const currentUrl = page.url()
     const pageTitle = await page.title()
 
-    // Try standard Facebook login form
-    const emailField = await page.waitForSelector('#email', { timeout: 8000 }).catch(() => null)
+    // Try multiple selectors for the email field (Facebook varies by region)
+    const emailSelectors = ['#email', 'input[name="email"]', 'input[autocomplete="username"]', 'input[type="text"]']
+    let emailField = null
+    for (const sel of emailSelectors) {
+      emailField = await page.waitForSelector(sel, { timeout: 5000 }).catch(() => null)
+      if (emailField) break
+    }
     if (!emailField) {
       return {
         success: false,
@@ -83,7 +88,7 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
     }
 
     await emailField.type(email, { delay: 50 })
-    const passField = await page.$('#pass')
+    const passField = await page.$('#pass') || await page.$('input[autocomplete="current-password"]') || await page.$('input[type="password"]')
     if (passField) await passField.type(password, { delay: 50 })
 
     const loginBtn = await page.$('#loginbutton, button[type="submit"], input[type="submit"]')
