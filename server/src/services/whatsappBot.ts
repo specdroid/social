@@ -1691,9 +1691,15 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       },
     })
 
+    log('info', 'whatsapp', 'Main rules loop: rules found', { count: rules.length, sender, textContent: textContent.slice(0, 50) })
     for (const rule of rules) {
       const triggers = rule.triggerValue.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
-      if (!triggers.some(t => textContent.toLowerCase().includes(t))) continue
+      log('info', 'whatsapp', 'Main rules loop: checking rule', { name: rule.name, triggerValue: rule.triggerValue, triggers, textContent: textContent.slice(0, 50) })
+      if (!triggers.some(t => textContent.toLowerCase().includes(t))) {
+        log('info', 'whatsapp', 'Main rules loop: trigger no match', { name: rule.name, triggers })
+        continue
+      }
+      log('info', 'whatsapp', 'Main rules loop: trigger matched', { name: rule.name })
 
       const lastSent = threadTimestamps.get(sender) || 0
       const now = Date.now()
