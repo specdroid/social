@@ -1348,8 +1348,8 @@ _Example:_ ws test welcome bot: hello
   }
 
   // ── ws create rule <name> ── start wizard ──
-  if (/^ws create rule (\S+)\s+(-h|--help|-H)$/is.test(textContent.trim())) {
-    await sock.sendMessage(sender, { text: `📋 *ws create rule <name>*\n\nStart an interactive wizard to create an automation rule. The bot will ask for platform, triggers, contacts, groups, reply & media.\n\n_Example:_ ws create rule Motorcycle` })
+  if (/^ws create rule\s+(-h|--help|-H)$/i.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws create rule <name>*\n\nStart an interactive wizard to create an automation rule. The bot will ask for platform, triggers, contacts, groups, reply & media.\n\n_Example:_ ws create rule Motorcycle\n\n💡 Append \`-h\` to any ws command for help.` })
     return true
   }
   const createRuleMatch = textContent.match(/^ws create rule (\S+)$/is)
@@ -1366,6 +1366,28 @@ _Example:_ ws test welcome bot: hello
     await sock.sendMessage(sender, {
       text: `Let's create rule "${ruleName}".\n\n🌐 Platform? Choose a number:\n0 — Facebook\n1 — Instagram\n2 — WhatsApp\n\n(Send \`cancel\` anytime to abort)`,
     })
+    return true
+  }
+
+  // ── ws delete rule <rule name> ── delete an automation rule ──
+  if (/^ws delete rule\s+(-h|--help|-H)$/i.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws delete rule <name>*\n\nDelete an automation rule by name.\n\n_Example:_ ws delete rule Motorcycle` })
+    return true
+  }
+  const deleteRuleMatch = textContent.match(/^ws delete rule (.+)$/is)
+  if (deleteRuleMatch) {
+    const ruleName = deleteRuleMatch[1].trim()
+    try {
+      const rule = await prisma.automationRule.findFirst({ where: { name: ruleName } })
+      if (!rule) {
+        await sock.sendMessage(sender, { text: `❌ Rule "${ruleName}" not found.` })
+        return true
+      }
+      await prisma.automationRule.delete({ where: { id: rule.id } })
+      await sock.sendMessage(sender, { text: `✅ Deleted rule "${ruleName}".` })
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ Failed to delete rule: ${(err as Error).message}` })
+    }
     return true
   }
 
@@ -1389,6 +1411,28 @@ _Example:_ ws test welcome bot: hello
       await sock.sendMessage(sender, { text: `✅ Saved list "${listName}" (${groupNames.length} groups)\n${groupNames.join(', ')}` })
     } catch (err) {
       await sock.sendMessage(sender, { text: `❌ Failed to save list: ${(err as Error).message}` })
+    }
+    return true
+  }
+
+  // ── ws delete list <name> / ws delete <name> ── delete a saved group list ──
+  if (/^ws delete(?: list)?\s+(-h|--help|-H)$/i.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws delete list <name>*\n\nDelete a saved group list by name.\n\n_Example:_ ws delete list schools` })
+    return true
+  }
+  const deleteListMatch = textContent.match(/^ws delete(?: list)? (.+)$/is)
+  if (deleteListMatch) {
+    const listName = deleteListMatch[1].trim()
+    try {
+      const list = await prisma.savedGroupList.findUnique({ where: { name: listName } })
+      if (!list) {
+        await sock.sendMessage(sender, { text: `❌ List "${listName}" not found.` })
+        return true
+      }
+      await prisma.savedGroupList.delete({ where: { id: list.id } })
+      await sock.sendMessage(sender, { text: `✅ Deleted list "${listName}".` })
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ Failed to delete list: ${(err as Error).message}` })
     }
     return true
   }

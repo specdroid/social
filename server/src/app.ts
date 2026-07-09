@@ -98,12 +98,22 @@ export function createApp(): express.Application {
           example: 'ws test welcome bot: hello',
         },
         {
+          command: 'ws delete rule <name>',
+          description: 'Delete an automation rule by name.',
+          example: 'ws delete rule Motorcycle',
+        },
+        {
+          command: 'ws delete list <name>',
+          description: 'Delete a saved group list by name.',
+          example: 'ws delete list schools',
+        },
+        {
           command: 'ws <group1>, <group2>: <content>',
           description: 'Send a message directly to specific WhatsApp groups (you must be admin).',
           example: 'ws my group: Hello!',
         },
       ],
-      note: 'All commands are sent as self-chat messages (message yourself). Append -h to any ws command for specific help (e.g. "ws create rule <name> -h").',
+      note: 'All commands are sent as self-chat messages (message yourself). Append -h to any ws command for specific help (e.g. "ws create rule -h").',
     })
   })
 
