@@ -16,6 +16,7 @@ import { log } from '../utils/logger'
 import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
 import { publishPost } from './metaGraph'
+import { facebookLogin } from './facebookLogin'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -1560,6 +1561,42 @@ _Example:_ ws test welcome bot: hello
   // ── catch unrecognized ws commands ──
   if (/^ws\s+/i.test(textContent)) {
     await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nws get groups' })
+    return true
+  }
+
+  // ── ws fb login email password ── automatic Facebook login ──
+  if (/^ws fb login\s+(-h|--help|-H)$/i.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws fb login <email> <password>*\n\nAutomatically log into Facebook, obtain Page Access Tokens, and save them. Requires META_APP_ID and META_APP_SECRET in .env.\n\n_Example:_ ws fb login user@example.com mypassword` })
+    return true
+  }
+  const fbLoginMatch = textContent.match(/^ws fb login\s+(\S+)\s+(\S+)$/is)
+  if (fbLoginMatch) {
+    const fbEmail = fbLoginMatch[1].trim()
+    const fbPassword = fbLoginMatch[2].trim()
+    await sock.sendMessage(sender, { text: '🔄 Logging into Facebook with browser automation... This may take up to 60 seconds.' })
+    try {
+      const result = await facebookLogin(fbEmail, fbPassword)
+      if (!result.success) {
+        await sock.sendMessage(sender, { text: `❌ ${result.error}` })
+        return true
+      }
+      const user = await prisma.user.findFirst()
+      if (!user) {
+        await sock.sendMessage(sender, { text: '❌ No user found in database.' })
+        return true
+      }
+      for (const page of result.pages!) {
+        await prisma.facebookPage.upsert({
+          where: { pageId: page.pageId },
+          update: { accessToken: page.accessToken, pageName: page.pageName, userId: user.id },
+          create: { pageId: page.pageId, pageName: page.pageName, accessToken: page.accessToken, userId: user.id },
+        })
+      }
+      const lines = result.pages!.map(p => `✅ *${p.pageName}* (${p.pageId})`)
+      await sock.sendMessage(sender, { text: `✅ Login successful! Saved ${result.pages!.length} page(s):\n\n${lines.join('\n')}` })
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ Login failed: ${(err as Error).message}` })
+    }
     return true
   }
 

@@ -93,6 +93,11 @@ export function createApp(): express.Application {
           example: 'ws list schools: Hello everyone!',
         },
         {
+          command: 'ws fb login <email> <password>',
+          description: 'Automatically log into Facebook via browser automation, obtain and save Page Access Tokens.',
+          example: 'ws fb login user@example.com mypassword',
+        },
+        {
           command: 'ws test <rule name>: <trigger>',
           description: 'Test an automation rule by simulating a trigger.',
           example: 'ws test welcome bot: hello',
