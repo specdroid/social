@@ -1558,12 +1558,6 @@ _Example:_ ws test welcome bot: hello
     return true
   }
 
-  // ── catch unrecognized ws commands ──
-  if (/^ws\s+/i.test(textContent)) {
-    await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nws get groups' })
-    return true
-  }
-
   // ── ws fb login email password ── automatic Facebook login ──
   if (/^ws fb login\s+(-h|--help|-H)$/i.test(textContent.trim())) {
     await sock.sendMessage(sender, { text: `📋 *ws fb login <email> <password>*\n\nAutomatically log into Facebook, obtain Page Access Tokens, and save them. Requires META_APP_ID and META_APP_SECRET in .env.\n\n_Example:_ ws fb login user@example.com mypassword` })
@@ -1597,6 +1591,12 @@ _Example:_ ws test welcome bot: hello
     } catch (err) {
       await sock.sendMessage(sender, { text: `❌ Login failed: ${(err as Error).message}` })
     }
+    return true
+  }
+
+  // ── catch unrecognized ws commands ──
+  if (/^ws\s+/i.test(textContent)) {
+    await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nws get groups' })
     return true
   }
 
