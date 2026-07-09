@@ -88,7 +88,7 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
       page.keyboard.press('Enter'),
     ])
 
-    await new Promise(r => setTimeout(r, 2000))
+    await new Promise(r => setTimeout(r, 3000))
 
     let finalUrl = page.url()
 
@@ -100,24 +100,52 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
     const fragmentMatch = finalUrl.match(/access_token=([^&]+)/)
     if (fragmentMatch) {
       shortLivedToken = fragmentMatch[1]
+    } else {
+      const urlHash = await page.evaluate('window.location.hash') as string
+      const hashMatch = urlHash.match(/access_token=([^&]+)/)
+      if (hashMatch) shortLivedToken = hashMatch[1]
     }
 
-    if (!shortLivedToken) {
-      const consentBtn = await page.$('[name="__CONFIRM__"], button[type="submit"], [role="button"]')
-      if (consentBtn) {
-        await Promise.all([
-          page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {}),
-          consentBtn.click(),
-        ])
+    const waitForConsent = async (): Promise<string> => {
+      for (let i = 0; i < 15; i++) {
+        const btn = await page.$(
+          'button[type="submit"], ' +
+          'input[type="submit"], ' +
+          '[name="__CONFIRM__"], ' +
+          'a[href*="consent"], ' +
+          '[data-testid*="accept"], ' +
+          '[ajaxify*="consent"], ' +
+          'form[action*="consent"] button, ' +
+          'form button:first-child'
+        )
+        if (btn) {
+          await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {}),
+            btn.click().catch(() => {}),
+          ])
+          await new Promise(r => setTimeout(r, 1000))
+          const u = page.url()
+          const m = u.match(/access_token=([^&]+)/)
+          if (m) return m[1]
+          const h = await page.evaluate('window.location.hash') as string
+          const hm = h.match(/access_token=([^&]+)/)
+          if (hm) return hm[1]
+        }
         await new Promise(r => setTimeout(r, 1000))
-        finalUrl = page.url()
-        const afterMatch = finalUrl.match(/access_token=([^&]+)/)
-        if (afterMatch) shortLivedToken = afterMatch[1]
       }
+      return ''
     }
 
     if (!shortLivedToken) {
-      return { success: false, error: `Could not obtain access token. Final URL: ${finalUrl}` }
+      shortLivedToken = await waitForConsent()
+    }
+
+    if (!shortLivedToken) {
+      const finalHash = await page.evaluate('window.location.hash') as string
+      return {
+        success: false,
+        error: `Could not obtain access token. Final URL: ${finalUrl}, Hash: ${finalHash}, Page title: ${await page.title()}`,
+      }
     }
 
     const exchangeResult = await graphPost('/oauth/access_token', {
