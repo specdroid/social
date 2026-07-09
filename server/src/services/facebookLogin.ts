@@ -124,26 +124,33 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
     const waitForConsent = async (): Promise<string> => {
       log('info', 'meta_api', 'fb_login: waiting for consent button')
       for (let i = 0; i < 15; i++) {
-        const btn = await page.$(
-          'button[type="submit"], ' +
-          'input[type="submit"], ' +
-          '[name="__CONFIRM__"], ' +
-          'a[href*="consent"], ' +
-          '[data-testid*="accept"], ' +
-          '[ajaxify*="consent"], ' +
-          'form[action*="consent"] button, ' +
-          'form button:first-child'
-        )
-        if (btn) {
-          const btnTag = await page.evaluate((el) => `${el.tagName}.${el.className}`, btn).catch(() => '?')
-          log('info', 'meta_api', `fb_login: consent button found at attempt ${i + 1}`, { tag: btnTag })
+        const buttons = await page.$$('button, input[type="submit"], [role="button"]')
+        let confirmBtn = null
+        for (const b of buttons) {
+          const text = await page.evaluate((el) => (el.textContent || '').trim().toLowerCase(), b).catch(() => '')
+          const cls = await page.evaluate((el) => el.className, b).catch(() => '')
+          log('info', 'meta_api', `fb_login: button ${i}.${buttons.indexOf(b)}`, { text: text.slice(0, 50), class: cls.slice(0, 50) })
+          if (
+            text.includes('continue') ||
+            text.includes('allow') ||
+            text.includes('confirm') ||
+            text.includes('connect') ||
+            cls.includes('confirm') ||
+            (text && !cls.includes('cancel'))
+          ) {
+            confirmBtn = b
+            break
+          }
+        }
+        if (confirmBtn) {
+          log('info', 'meta_api', `fb_login: clicking confirm button`)
           await Promise.all([
             page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {}),
-            btn.click().catch(() => {}),
+            confirmBtn.click().catch(() => {}),
           ])
           await new Promise(r => setTimeout(r, 1000))
           const u = page.url()
-          log('info', 'meta_api', 'fb_login: after consent click', { url: u, title: await page.title() })
+          log('info', 'meta_api', 'fb_login: after confirm click', { url: u, title: await page.title() })
           const m = u.match(/access_token=([^&]+)/)
           if (m) return m[1]
           const h = await page.evaluate('window.location.hash') as string
