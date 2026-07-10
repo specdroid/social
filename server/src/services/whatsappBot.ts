@@ -1722,27 +1722,31 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         return
       }
       if (pending.state === 'confirm' && (text.toLowerCase() === 'done' || text.toLowerCase() === 'confirmed')) {
-        await sock.sendMessage(sender, { text: '✅ Confirmed, reloading page...' })
-        if (pending.page) {
-          try {
-            await pending.page.reload({ waitUntil: 'networkidle0', timeout: 30000 }).catch(() => {})
-            await new Promise(r => setTimeout(r, 3000))
-            const screenshot = await pending.page.screenshot({ encoding: 'base64' })
-            await sock.sendMessage(sender, {
-              image: Buffer.from(screenshot, 'base64'),
-              caption: '📸 This is what the browser page looks like now. Reply with what to do next.',
-            })
-          } catch {}
-        }
-        // Transition to instruction state — wait for user to tell us what to do
+        await sock.sendMessage(sender, { text: '✅ Confirmed, sending screenshots every 30s... Reply "try another way" or whatever you want me to do.' })
+        // Start sending screenshots every 30s in the background
+        const screenshotInterval = setInterval(async () => {
+          if (pending.page) {
+            try {
+              const buf = await pending.page.screenshot({ encoding: 'base64' })
+              await sock.sendMessage(sender, { image: Buffer.from(buf, 'base64'), caption: '📸 Page state update (30s)' }).catch(() => {})
+            } catch {}
+          }
+        }, 30000)
+        // Transition to instruction state — stops interval on resolve
         const oldResolve = pending.resolve
         const oldReject = pending.reject
         clearTimeout(pending.timeout)
         const newTimeout = setTimeout(() => {
+          clearInterval(screenshotInterval)
           pending2FA.delete(normFor2FA)
-          oldReject(new Error('⏰ No instruction received (2 minutes).'))
-        }, 120000)
-        pending2FA.set(normFor2FA, { state: 'instruction', page: pending.page, sender, resolve: oldResolve, reject: oldReject, timeout: newTimeout })
+          oldReject(new Error('⏰ No instruction received (3 minutes).'))
+        }, 180000)
+        pending2FA.set(normFor2FA, {
+          state: 'instruction', page: pending.page, sender,
+          resolve: (val: string) => { clearInterval(screenshotInterval); oldResolve(val) },
+          reject: (err: any) => { clearInterval(screenshotInterval); oldReject(err) },
+          timeout: newTimeout,
+        })
         return
       }
       if (pending.state === 'instruction') {
