@@ -216,13 +216,14 @@ export async function facebookLogin(email: string, password: string, requestCode
                 const t = await page.evaluate((el) => (el.textContent || '').trim().toLowerCase(), b).catch(() => '')
                 if (t.includes('try another way')) {
                   await page.evaluate((el) => el.click(), b).catch(() => {})
-                  await new Promise(r => setTimeout(r, 4000))
                   break
                 }
               }
-              // Send screenshot so user can verify if the page changed
-              await requestCode.screenshot(page, '📸 After clicking "Try another way" — did it work?')
-              // Continue loop; next iteration will detect the code page if navigated
+              // Wait 20s, screenshot, wait another 20s, screenshot, then continue
+              for (let i = 0; i < 2; i++) {
+                await new Promise(r => setTimeout(r, 20000))
+                await requestCode.screenshot(page, `📸 ${i === 0 ? '20s' : '40s'} after clicking "Try another way" — what changed?`)
+              }
             } else {
               // Default: try consent buttons
               const confirmToken = await waitForConsent(page)
