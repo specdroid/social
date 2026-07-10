@@ -218,14 +218,33 @@ export async function facebookLogin(email: string, password: string, requestCode
                   break
                 }
               }
+              await new Promise(r => setTimeout(r, 3000))
+
+              // Check for radio buttons (different 2FA method options like WhatsApp, SMS, etc.)
+              const radios = await page.$$('input[type="radio"], [role="radio"]').catch(() => [] as any[])
+              if (radios.length > 0) {
+                log('info', 'meta_api', `fb_login: found ${radios.length} radio options, selecting the last one`)
+                await page.evaluate((el) => el.click(), radios[radios.length - 1]).catch(() => {})
+                await new Promise(r => setTimeout(r, 1500))
+
+                // Click Continue
+                const contBtns = await page.$$('button, [role="button"], a[role="button"], div[role="button"]')
+                for (const cb of contBtns) {
+                  const t2 = await page.evaluate((el) => (el.textContent || '').trim().toLowerCase(), cb).catch(() => '')
+                  if (t2 === 'continue') {
+                    await page.evaluate((el) => el.click(), cb).catch(() => {})
+                    break
+                  }
+                }
+                await new Promise(r => setTimeout(r, 5000))
+              }
             } else {
               log('info', 'meta_api', 'fb_login: using waitForConsent')
               await waitForConsent(page)
             }
 
-            // Wait 5s then send first screenshot
-            await new Promise(r => setTimeout(r, 5000))
-            await requestCode.screenshot(page, '📸 5s after click')
+            // Take screenshot to show result
+            await requestCode.screenshot(page, '📸 After clicking the button')
 
             // If still on the same confirm page, send 3 screenshots 7s apart then error out
             if (is2FAConfirmPage(page.url())) {
