@@ -70,6 +70,8 @@ def main():
                         help='Path to Netscape-format cookies.txt exported from Chrome')
     args = parser.parse_args()
 
+    print(json.dumps({'success': False, 'error': 'started'}), flush=True)
+
     options = webdriver.ChromeOptions()
     options.add_argument('--headless=new')
     options.add_argument('--disable-blink-features=AutomationControlled')
@@ -86,8 +88,9 @@ def main():
     driver = None
     try:
         chromedriver_path = find_chromedriver()
+        print(json.dumps({'success': False, 'error': f'chromedriver: {chromedriver_path}'}), flush=True)
         if not chromedriver_path:
-            print(json.dumps({'success': False, 'error': 'chromedriver not found. Install chromium-chromedriver or place it in PATH.'}))
+            print(json.dumps({'success': False, 'error': 'chromedriver not found. Install chromium-chromedriver or place it in PATH.'}), flush=True)
             return
         service = ChromeService(chromedriver_path)
         driver = webdriver.Chrome(service=service, options=options)
@@ -117,9 +120,9 @@ def main():
         if not logged_in:
             page_title = driver.title.lower()
             if 'login' in page_title or 'log in' in page_title:
-                print(json.dumps({'success': False, 'error': 'Not logged in. Export a fresh cookies.txt from Chrome while on facebook.com.'}))
+                print(json.dumps({'success': False, 'error': 'Not logged in. Export a fresh cookies.txt from Chrome while on facebook.com.'}), flush=True)
             else:
-                print(json.dumps({'success': False, 'error': 'Could not find the post box. Facebook page structure may have changed.'}))
+                print(json.dumps({'success': False, 'error': 'Could not find the post box. Facebook page structure may have changed.'}), flush=True)
             return
 
         # Click the post box trigger
@@ -131,7 +134,7 @@ def main():
                 post_trigger = driver.find_element(By.XPATH, "//div[@role='button' and contains(@aria-label,\"What's on your mind\")]")
                 post_trigger.click()
             except Exception as e:
-                print(json.dumps({'success': False, 'error': f'Failed to click post box: {e}'}))
+                print(json.dumps({'success': False, 'error': f'Failed to click post box: {e}'}), flush=True)
                 return
 
         time.sleep(2)
@@ -147,7 +150,7 @@ def main():
                     (By.XPATH, "//div[@role='textbox']")
                 ))
             except TimeoutException as e:
-                print(json.dumps({'success': False, 'error': f'Could not find text input: {e}'}))
+                print(json.dumps({'success': False, 'error': f'Could not find text input: {e}'}), flush=True)
                 return
 
         textbox.click()
@@ -161,7 +164,7 @@ def main():
                 file_input.send_keys(os.path.abspath(args.image))
                 time.sleep(3)
             except Exception as e:
-                print(json.dumps({'success': False, 'error': f'Image upload failed: {e}'}))
+                print(json.dumps({'success': False, 'error': f'Image upload failed: {e}'}), flush=True)
                 return
 
         time.sleep(1)
@@ -175,14 +178,14 @@ def main():
                 post_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[contains(text(),'Post')]/..")))
                 post_btn.click()
             except TimeoutException as e:
-                print(json.dumps({'success': False, 'error': f'Could not find Post button: {e}'}))
+                print(json.dumps({'success': False, 'error': f'Could not find Post button: {e}'}), flush=True)
                 return
 
         time.sleep(4)
-        print(json.dumps({'success': True}))
+        print(json.dumps({'success': True}), flush=True)
 
     except Exception as e:
-        print(json.dumps({'success': False, 'error': f'{type(e).__name__}: {e}'}))
+        print(json.dumps({'success': False, 'error': f'{type(e).__name__}: {e}'}), flush=True)
     finally:
         if driver:
             try:
