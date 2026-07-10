@@ -219,16 +219,11 @@ export async function facebookLogin(email: string, password: string, requestCode
                   break
                 }
               }
-              // Wait 20s, screenshot, wait another 20s, screenshot, then continue
-              for (let i = 0; i < 2; i++) {
-                await new Promise(r => setTimeout(r, 20000))
-                await requestCode.screenshot(page, `📸 ${i === 0 ? '20s' : '40s'} after clicking "Try another way" — what changed?`)
-              }
+              // Wait a few seconds for page to react, then loop will pick up any navigation
+              await new Promise(r => setTimeout(r, 5000))
             } else {
               // Default: try consent buttons
               const confirmToken = await waitForConsent(page)
-              // Send screenshot after consent attempt
-              await requestCode.screenshot(page, '📸 After "waitForConsent" button click — what do you see?')
               if (confirmToken) { shortLivedToken = confirmToken; break }
               if (!is2FA(page.url())) break
             }
