@@ -238,10 +238,11 @@ export class LoginFlow {
       for (let j = 0; j < count; j++) {
         const text = (await buttons.nth(j).textContent() || '').trim().toLowerCase()
         const cls = (await buttons.nth(j).getAttribute('class') || '')
-        log('info', 'meta_api', `fb: consent button ${i}`, { text: text.slice(0, 80), class: cls.slice(0, 80) })
+        log('info', 'meta_api', `fb: consent button i=${i} j=${j}`, { text: text.slice(0, 80), class: cls.slice(0, 80) })
         if (
           text.includes('continue') || text.includes('allow') || text.includes('connect') ||
           text.includes('yes') || text.includes('this was me') || cls.includes('confirm') ||
+          text.includes('log in') ||
           (text && !cls.includes('cancel'))
         ) {
           log('info', 'meta_api', 'fb: clicking consent button')
