@@ -11,10 +11,12 @@ import os
 import sys
 import time
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
+from webdriver_manager.chrome import ChromeDriverManager
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FB_URL = 'https://facebook.com/me'
@@ -67,7 +69,8 @@ def main():
 
     driver = None
     try:
-        driver = webdriver.Chrome(options=options)
+        service = ChromeService(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
 
         # Load cookies if provided
         if args.cookies and os.path.isfile(args.cookies):
