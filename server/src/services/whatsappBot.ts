@@ -1541,7 +1541,7 @@ _Example:_ ws test welcome bot: hello
       await sock.sendMessage(sender, { text: '🔄 Posting to Facebook wall via browser...' })
 
       const stdout = await new Promise<string>((resolve, reject) => {
-        execFile('xvfb-run', [pythonBin, scriptPath, ...args], { timeout: 60000 }, (err, stdout, stderr) => {
+        execFile(pythonBin, [scriptPath, ...args], { timeout: 60000 }, (err, stdout, stderr) => {
           if (err) reject(new Error(stderr || err.message))
           else resolve(stdout)
         })

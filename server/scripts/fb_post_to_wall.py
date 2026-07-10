@@ -2,12 +2,14 @@
 """
 Post to Facebook wall via Selenium.
 Usage:
-  xvfb-run python3 fb_post_to_wall.py --content "Hello" [--image /path/to/img.jpg] [--cookies /path/to/cookies.txt]
+  python3 fb_post_to_wall.py --content "Hello" [--image /path/to/img.jpg] [--cookies /path/to/cookies.txt]
 Outputs JSON on stdout: {"success": true} or {"success": false, "error": "..."}
 """
 import argparse
 import json
 import os
+import signal
+import subprocess
 import sys
 import time
 from selenium import webdriver
@@ -18,6 +20,22 @@ from selenium.common.exceptions import TimeoutException, WebDriverException
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FB_URL = 'https://facebook.com/me'
+
+DISPLAY_NUM = 99
+
+
+def start_xvfb():
+    """Start a virtual X server and set DISPLAY."""
+    proc = subprocess.Popen(
+        ['Xvfb', f':{DISPLAY_NUM}', '-screen', '0', '1920x1080x24'],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    os.environ['DISPLAY'] = f':{DISPLAY_NUM}'
+    time.sleep(1)
+    if proc.poll() is not None:
+        raise RuntimeError('Xvfb failed to start')
+    return proc
 
 
 def load_cookies(driver, cookies_path):
@@ -51,6 +69,13 @@ def main():
     parser.add_argument('--cookies', default=None,
                         help='Path to Netscape-format cookies.txt exported from Chrome')
     args = parser.parse_args()
+
+    xvfb_proc = None
+    try:
+        xvfb_proc = start_xvfb()
+    except (FileNotFoundError, RuntimeError) as e:
+        print(json.dumps({'success': False, 'error': f'Xvfb: {e}'}))
+        return
 
     options = webdriver.ChromeOptions()
     options.add_argument('--disable-blink-features=AutomationControlled')
@@ -163,6 +188,12 @@ def main():
         if driver:
             try:
                 driver.quit()
+            except Exception:
+                pass
+        if xvfb_proc:
+            try:
+                xvfb_proc.send_signal(signal.SIGTERM)
+                xvfb_proc.wait(timeout=5)
             except Exception:
                 pass
 
