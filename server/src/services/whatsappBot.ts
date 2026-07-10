@@ -1612,7 +1612,9 @@ _Example:_ ws test welcome bot: hello
       }
       const result = await facebookLogin(fbEmail, fbPassword, codeHelper)
       if (!result.success) {
-        await sock.sendMessage(sender, { text: `❌ ${result.error}` })
+        if (!result.error?.includes('Cancelled by user')) {
+          await sock.sendMessage(sender, { text: `❌ ${result.error}` })
+        }
         return true
       }
       const user = await prisma.user.findFirst()
@@ -1714,6 +1716,13 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
     const pending = pending2FA.get(normFor2FA)
     if (pending) {
       const text = textContent.trim()
+      if (text.toLowerCase() === 'abort' || text.toLowerCase() === 'cancel') {
+        clearTimeout(pending.timeout)
+        pending2FA.delete(normFor2FA)
+        pending.reject(new Error('Cancelled by user.'))
+        await sock.sendMessage(sender, { text: '❌ Login cancelled.' })
+        return
+      }
       if (pending.state === 'code' && /^\d{6}$/.test(text)) {
         clearTimeout(pending.timeout)
         pending2FA.delete(normFor2FA)
