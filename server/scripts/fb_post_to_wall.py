@@ -24,11 +24,11 @@ FB_URL = 'https://facebook.com/me'
 def find_chromedriver():
     """Locate chromedriver binary."""
     candidates = [
-        'chromedriver',
-        '/snap/bin/chromium.chromedriver',
-        '/usr/lib/chromium-browser/chromedriver',
         '/usr/bin/chromedriver',
         '/snap/chromium/current/usr/lib/chromium-browser/chromedriver',
+        '/usr/lib/chromium-browser/chromedriver',
+        '/snap/bin/chromium.chromedriver',
+        'chromedriver',
     ]
     for c in candidates:
         if os.path.isfile(c) or os.path.isfile('/' + c.lstrip('/')):
