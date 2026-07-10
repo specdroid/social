@@ -14,7 +14,7 @@ export class Flow {
   private buildOAuthUrl(appId: string): string {
     const redirectUri = 'https://www.facebook.com/connect/login_success.html'
     const scope = 'pages_manage_posts,pages_read_engagement,pages_show_list'
-    return `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token,granted_scopes&scope=${encodeURIComponent(scope)}&auth_type=rerequest`
+    return `https://m.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token,granted_scopes&scope=${encodeURIComponent(scope)}&auth_type=rerequest`
   }
 
   async run(page: Page, email: string, password: string, requestCode?: RequestCodeHelper): Promise<LoginResult> {
@@ -35,10 +35,17 @@ export class Flow {
       const loginOk = await this.mobileLogin(page, email, password, requestCode)
       if (!loginOk) return { success: false, error: 'Login failed — still on login/checkpoint page after authentication' }
 
-      // Retry OAuth after login
-      log('info', 'meta_api', 'fb: retrying OAuth after login')
-      await page.goto(oauthUrl, { waitUntil: 'domcontentloaded', timeout: 30000 })
-      await page.waitForTimeout(3000)
+      // Check if token already present (mobileLogin may have completed the OAuth flow)
+      let token = this.extractToken(page)
+      if (!token) {
+        // Retry OAuth after login
+        log('info', 'meta_api', 'fb: retrying OAuth after login')
+        await page.goto(oauthUrl, { waitUntil: 'domcontentloaded', timeout: 30000 })
+        await page.waitForTimeout(3000)
+      } else {
+        log('info', 'meta_api', 'fb: token extracted after mobile login')
+        return this.exchangeAndFetch(token, appId, appSecret)
+      }
     }
 
     // 3. Handle consent page & extract token
@@ -54,45 +61,71 @@ export class Flow {
   private async mobileLogin(page: Page, email: string, password: string, requestCode?: RequestCodeHelper): Promise<boolean> {
     log('info', 'meta_api', 'fb: current OAuth login URL', { url: page.url() })
 
-    // Try to fill form on the current page first (OAuth login page)
-    const emailInput = page.locator('#email, input[name="email"]')
-    const emailCount = await emailInput.count()
+    // Check if already on the OAuth login page
+    const hasForm = (await page.locator('input[name="email"], #email').count()) > 0
+    const hasLoginBtn = (await page.locator('button:has-text("Log in"), div[role="button"]:has-text("Log in"), button:has-text("Continue"), div[role="button"]:has-text("Continue")').count()) > 0
 
-    if (emailCount === 0) {
-      // No email field — might be on a checkpoint page or already logged in
-      // Navigate to mobile login as fallback
-      log('info', 'meta_api', 'fb: no email field on current page, trying mobile login')
+    if (!hasForm && hasLoginBtn) {
+      // Already logged in — just click "Log in" / "Continue" on the OAuth page
+      log('info', 'meta_api', 'fb: already logged in, clicking continue on OAuth page')
+      await page.locator('button:has-text("Log in"), div[role="button"]:has-text("Log in"), button:has-text("Continue"), div[role="button"]:has-text("Continue")').first().click()
+      await page.waitForTimeout(5000)
+      await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
+      await page.waitForTimeout(2000)
+
+      // Check for CAPTCHA/checkpoint after click
+      const afterUrl = page.url()
+      if (afterUrl.includes('checkpoint') || afterUrl.includes('captcha') || afterUrl.includes('two_step')) {
+        // Fall through to CAPTCHA handling below
+      } else {
+        return true
+      }
+    }
+
+    if (hasForm) {
+      // Fill form on the OAuth login page
+      log('info', 'meta_api', 'fb: filling form on OAuth login page')
+      await page.fill('input[name="email"], #email', email)
+      await page.fill('input[name="pass"], #pass', password)
+      await page.locator('button[name="login"], button:has-text("Log in"), div[role="button"]:has-text("Log in")').first().click()
+      await page.waitForTimeout(5000)
+      await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
+      await page.waitForTimeout(2000)
+    } else if (!hasLoginBtn) {
+      // No form and no login button — navigate to plain mobile login as fallback
+      log('info', 'meta_api', 'fb: no form or button on current page, navigating to mobile login')
       await page.goto('https://m.facebook.com/login.php', { waitUntil: 'domcontentloaded', timeout: 30000 })
       await page.waitForTimeout(3000)
 
-      // Check if already logged in (page redirected away from login)
+      // If redirected away (already logged in), we're good
       if (!page.url().includes('login')) {
-        log('info', 'meta_api', 'fb: already logged in, skipping form fill')
+        log('info', 'meta_api', 'fb: already logged in (redirected from login page)')
         return true
       }
 
       const mobileEmail = page.locator('input[name="email"]')
       if (await mobileEmail.count() === 0) {
-        log('warn', 'meta_api', 'fb: no email field on mobile login either')
+        // Might show "already logged in as X" message
+        const continueBtn = page.locator('button:has-text("Log in"), div[role="button"]:has-text("Log in"), a:has-text("Log in")')
+        if (await continueBtn.count() > 0) {
+          log('info', 'meta_api', 'fb: clicking Log in on already-logged-in page')
+          await continueBtn.first().click()
+          await page.waitForTimeout(5000)
+          await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
+          await page.waitForTimeout(2000)
+          return true
+        }
+        log('warn', 'meta_api', 'fb: no email field on mobile login')
         return false
       }
 
       await mobileEmail.fill(email)
       await page.locator('input[name="pass"]').fill(password)
-      const loginBtn = page.locator('button[name="login"], div[role="button"]:has-text("Log in")')
-      await loginBtn.first().click()
-    } else {
-      // Fill form on current page (OAuth login page)
-      log('info', 'meta_api', 'fb: filling form on OAuth login page')
-      await emailInput.fill(email)
-      await page.locator('#pass, input[name="pass"]').fill(password)
-      const loginBtn = page.locator('button[name="login"], button:has-text("Log in"), div[role="button"]:has-text("Log in")')
-      await loginBtn.first().click()
+      await page.locator('button[name="login"], div[role="button"]:has-text("Log in")').first().click()
+      await page.waitForTimeout(5000)
+      await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
+      await page.waitForTimeout(2000)
     }
-
-    await page.waitForTimeout(5000)
-    await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
-    await page.waitForTimeout(2000)
 
     const url = page.url()
     log('info', 'meta_api', 'fb: after login URL', { url })
