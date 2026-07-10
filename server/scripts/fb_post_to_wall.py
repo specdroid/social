@@ -92,7 +92,11 @@ def main():
         if not chromedriver_path:
             print(json.dumps({'success': False, 'error': 'chromedriver not found. Install chromium-chromedriver or place it in PATH.'}), flush=True)
             return
+        print(json.dumps({'success': False, 'error': 'creating ChromeService...'}), flush=True)
         service = ChromeService(chromedriver_path)
+        print(json.dumps({'success': False, 'error': 'creating driver...'}), flush=True)
+        driver = webdriver.Chrome(service=service, options=options)
+        print(json.dumps({'success': False, 'error': 'driver created!'}), flush=True)
         driver = webdriver.Chrome(service=service, options=options)
 
         # Load cookies if provided
