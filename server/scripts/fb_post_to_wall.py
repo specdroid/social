@@ -105,41 +105,62 @@ def main():
         time.sleep(5)
 
         # Dismiss "Continue as [name]" dialog
-        for _ in range(5):
-            cont = driver.find_elements(By.XPATH, "//*[text()='Continue']")
-            if not cont:
-                cont = driver.find_elements(By.XPATH, "//*[normalize-space()='Continue' and not(self::html or self::body or self::head)]")
-            if not cont:
-                try:
-                    el = driver.execute_script(
-                        "return [...document.querySelectorAll('div,span,a,button,label')]"
-                        ".find(e => e.textContent.trim()==='Continue' && e.offsetParent!==null)"
-                    )
-                    if el:
-                        cont = [el]
-                except Exception:
-                    pass
-            if cont:
-                try:
-                    outer = cont[0].get_attribute('outerHTML')[:300]
-                except Exception:
-                    outer = ''
-                driver.execute_script('arguments[0].click();', cont[0])
-                time.sleep(2)
-                if not driver.find_elements(By.XPATH, "//*[text()='Continue']"):
-                    break
-            else:
-                # Dump first 100 elements with 'Continue' in text for debug
-                try:
-                    els = driver.execute_script(
-                        "return [...document.querySelectorAll('*')].filter(e=>e.textContent.includes('Continue')).slice(0,5).map(e=>({tag:e.tagName,text:e.textContent.trim().slice(0,80),visible:e.offsetParent!==null,outer:e.outerHTML.slice(0,200)}))"
-                    )
-                    if els:
-                        with open('/tmp/fb_continue_debug.json', 'w') as f:
-                            json.dump(els, f, indent=2)
-                except Exception:
-                    pass
-                break
+        # Dump all elements containing 'Continue' text for debugging
+        try:
+            debug_els = driver.execute_script("""
+                return [...document.querySelectorAll('*')]
+                    .filter(e => e.textContent.trim().includes('Continue'))
+                    .slice(0,10)
+                    .map(e => ({
+                        tag: e.tagName,
+                        role: e.getAttribute('role'),
+                        ariaLabel: e.getAttribute('aria-label'),
+                        text: e.textContent.trim().substring(0,100),
+                        visible: e.offsetParent !== null,
+                        outer: e.outerHTML.substring(0,250)
+                    }))
+            """)
+            if debug_els:
+                with open('/tmp/fb_continue_debug.json', 'w') as f:
+                    json.dump(debug_els, f, indent=2)
+        except Exception:
+            pass
+        # Try clicking Continue via JS (click the topmost interactive parent)
+        try:
+            driver.execute_script("""
+                const cont = [...document.querySelectorAll('*')]
+                    .filter(e => e.textContent.trim().includes('Continue'))
+                    .find(e => {
+                        const t = e.textContent.trim();
+                        return t === 'Continue' || t.startsWith('Continue ');
+                    });
+                if (cont) {
+                    // Walk up to find a clickable parent
+                    let el = cont;
+                    while (el && el !== document.body) {
+                        const role = el.getAttribute('role');
+                        const tag = el.tagName.toLowerCase();
+                        if (role === 'button' || tag === 'button' || tag === 'a' || el.onclick) {
+                            el.click();
+                            return true;
+                        }
+                        el = el.parentElement;
+                    }
+                    // Fallback: click the found element directly
+                    cont.click();
+                    return true;
+                }
+                return false;
+            """)
+            time.sleep(3)
+        except Exception:
+            pass
+        # Navigate again to bypass dialog
+        try:
+            driver.get('https://www.facebook.com/')
+            time.sleep(5)
+        except Exception:
+            pass
 
         # Check if logged in (instant find_elements, no slow wait.until)
         logged_in = False
