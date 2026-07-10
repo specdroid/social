@@ -3,7 +3,12 @@ import type { Page, Locator } from 'playwright'
 export class HumanSimulator {
   async typeText(page: Page, selector: string, text: string): Promise<void> {
     const locator = page.locator(selector)
-    await locator.click()
+    try {
+      await locator.click({ force: true, timeout: 5000 })
+    } catch {
+      await page.fill(selector, text).catch(() => {})
+      return
+    }
     for (const char of text) {
       const delay = Math.floor(Math.random() * 80) + 40
       await page.keyboard.type(char, { delay })
