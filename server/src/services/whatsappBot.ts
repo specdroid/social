@@ -34,6 +34,9 @@ interface Pending2FA {
   resolve: (code: string) => void
   reject: (err: Error) => void
   timeout: NodeJS.Timeout
+  state: 'code' | 'confirm' | 'instruction'
+  page?: any
+  sender: string
 }
 const pending2FA = new Map<string, Pending2FA>()
 
@@ -1579,10 +1582,16 @@ _Example:_ ws test welcome bot: hello
     await sock.sendMessage(sender, { text: '🔄 Logging into Facebook with browser automation... This may take up to 60 seconds.' })
     try {
       const normSender = normalizeJid(actualSender)
-      const result = await facebookLogin(fbEmail, fbPassword, async (url) => {
+      const result = await facebookLogin(fbEmail, fbPassword, async (page, url) => {
         if (url.includes('flow=two_factor_login')) {
-          await sock.sendMessage(sender, { text: '📱 *Check your phone.* Facebook sent a login confirmation notification. Tap "Yes, that was me" on your phone.' })
-          return ''
+          await sock.sendMessage(sender, { text: '📱 *Check your phone.* Facebook sent a login confirmation notification. Tap "Yes, that was me" on your phone, then reply "done" here.' })
+          return new Promise<string>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              pending2FA.delete(normSender)
+              reject(new Error('⏰ Phone confirmation timed out (2 minutes). Run `ws fb login` again.'))
+            }, 120000)
+            pending2FA.set(normSender, { state: 'confirm', page, sender, resolve, reject, timeout })
+          })
         }
         await sock.sendMessage(sender, { text: '📱 *2FA code required.* Send the 6-digit code from your authenticator app here.' })
         return new Promise<string>((resolve, reject) => {
@@ -1590,7 +1599,7 @@ _Example:_ ws test welcome bot: hello
             pending2FA.delete(normSender)
             reject(new Error('⏰ 2FA code timed out (2 minutes). Run `ws fb login` again.'))
           }, 120000)
-          pending2FA.set(normSender, { resolve, reject, timeout })
+          pending2FA.set(normSender, { state: 'code', page, sender, resolve, reject, timeout })
         })
       })
       if (!result.success) {
@@ -1691,15 +1700,48 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     log('info', 'whatsapp', 'Incoming message', { sender, actualSender, fromMe: message.key.fromMe, text: textContent.slice(0, 100) })
 
-    // ── Pending 2FA: if this sender is waiting to provide a code ──
+    // ── Pending 2FA: if this sender is waiting to provide input ──
     const normFor2FA = normalizeJid(actualSender)
     const pending = pending2FA.get(normFor2FA)
-    if (pending && /^\d{6}$/.test(textContent.trim())) {
-      clearTimeout(pending.timeout)
-      pending2FA.delete(normFor2FA)
-      await sock.sendMessage(sender, { text: '✅ Code received, completing login...' })
-      pending.resolve(textContent.trim())
-      return
+    if (pending) {
+      const text = textContent.trim()
+      if (pending.state === 'code' && /^\d{6}$/.test(text)) {
+        clearTimeout(pending.timeout)
+        pending2FA.delete(normFor2FA)
+        await sock.sendMessage(sender, { text: '✅ Code received, completing login...' })
+        pending.resolve(text)
+        return
+      }
+      if (pending.state === 'confirm' && (text.toLowerCase() === 'done' || text.toLowerCase() === 'confirmed')) {
+        await sock.sendMessage(sender, { text: '✅ Confirmed, reloading page...' })
+        if (pending.page) {
+          try {
+            await pending.page.reload({ waitUntil: 'networkidle0', timeout: 30000 }).catch(() => {})
+            await new Promise(r => setTimeout(r, 3000))
+            const screenshot = await pending.page.screenshot({ encoding: 'base64' })
+            await sock.sendMessage(sender, {
+              image: Buffer.from(screenshot, 'base64'),
+              caption: '📸 This is what the browser page looks like now. Reply with what to do next.',
+            })
+          } catch {}
+        }
+        // Transition to instruction state — wait for user to tell us what to do
+        const oldResolve = pending.resolve
+        const oldReject = pending.reject
+        clearTimeout(pending.timeout)
+        const newTimeout = setTimeout(() => {
+          pending2FA.delete(normFor2FA)
+          oldReject(new Error('⏰ No instruction received (2 minutes).'))
+        }, 120000)
+        pending2FA.set(normFor2FA, { state: 'instruction', page: pending.page, sender, resolve: oldResolve, reject: oldReject, timeout: newTimeout })
+        return
+      }
+      if (pending.state === 'instruction') {
+        clearTimeout(pending.timeout)
+        pending2FA.delete(normFor2FA)
+        pending.resolve(text)
+        return
+      }
     }
 
     let sharedAllGroups: Record<string, any> | undefined

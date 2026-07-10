@@ -102,7 +102,7 @@ function is2FAConfirmPage(url: string): boolean {
   return url.includes('two_step_verification/two_factor/') && url.includes('flow=two_factor_login')
 }
 
-export async function facebookLogin(email: string, password: string, requestCode?: (currentUrl: string) => Promise<string>): Promise<LoginResult> {
+export async function facebookLogin(email: string, password: string, requestCode?: (page: Page, currentUrl: string) => Promise<string>): Promise<LoginResult> {
   const appId = env.META_APP_ID
   const appSecret = env.META_APP_SECRET
 
@@ -190,8 +190,8 @@ export async function facebookLogin(email: string, password: string, requestCode
       log('info', 'meta_api', 'fb_login: after submit', { url: urlAfterSubmit, title: await page.title() })
 
       if (is2FA(urlAfterSubmit)) {
-        // Handle 2FA — loop in case the page transitions (confirm → code, etc.)
-        for (let attempt = 0; attempt < 10 && is2FA(page.url()); attempt++) {
+        // Handle 2FA — max 3 retries as requested
+        for (let attempt = 0; attempt < 3 && is2FA(page.url()); attempt++) {
           const currentUrl = page.url()
           log('info', 'meta_api', `fb_login: 2FA attempt ${attempt}`, { url: currentUrl })
 
@@ -199,19 +199,13 @@ export async function facebookLogin(email: string, password: string, requestCode
             if (!requestCode) {
               return { success: false, error: 'Facebook sent a login confirmation to your phone. Approve it and retry.' }
             }
-            log('info', 'meta_api', 'fb_login: waiting for phone confirmation')
-            await requestCode(currentUrl)
-            await new Promise(r => setTimeout(r, 30000))
-            log('info', 'meta_api', 'fb_login: trying to advance past confirm page')
+            log('info', 'meta_api', 'fb_login: asking user to confirm on phone')
+            await requestCode(page, currentUrl) // waits for user to reply "done", reloads page
+            await new Promise(r => setTimeout(r, 3000))
 
+            // Try clicking any available button
             const confirmToken = await waitForConsent(page)
             if (confirmToken) { shortLivedToken = confirmToken; break }
-            if (!is2FA(page.url())) break
-
-            // Reload — page may reflect confirmed state
-            log('info', 'meta_api', 'fb_login: reloading after phone confirmation')
-            await page.reload({ waitUntil: 'networkidle0', timeout: 30000 }).catch(() => {})
-            await new Promise(r => setTimeout(r, 3000))
             if (!is2FA(page.url())) break
 
           } else if (is2FACodePage(currentUrl)) {
@@ -219,7 +213,7 @@ export async function facebookLogin(email: string, password: string, requestCode
               return { success: false, error: 'Two-factor authentication code required.' }
             }
             log('info', 'meta_api', 'fb_login: requesting 2FA code')
-            const code = await requestCode(currentUrl)
+            const code = await requestCode(page, currentUrl)
             log('info', 'meta_api', 'fb_login: code received, entering it')
             const ok = await enter2FACode(page, code)
             if (!ok) {
