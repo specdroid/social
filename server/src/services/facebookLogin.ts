@@ -235,6 +235,30 @@ export async function facebookLogin(email: string, password: string, requestCode
                 })()`)
                 await new Promise(r => setTimeout(r, 3000))
 
+                // Log all elements matching keywords for debugging
+                const matches = await page.evaluate(`(function() {
+                  const keywords = ['continue', 'next', 'send', 'confirm', 'ok'];
+                  const result = [];
+                  const all = document.querySelectorAll('*');
+                  for (const el of all) {
+                    const text = (el.textContent || '').trim().toLowerCase();
+                    if (keywords.some(k => text === k || text.startsWith(k + ' ') || text.includes(k))) {
+                      const rect = el.getBoundingClientRect();
+                      result.push({
+                        tag: el.tagName,
+                        text: text.slice(0, 40),
+                        w: Math.round(rect.width),
+                        h: Math.round(rect.height),
+                        visible: rect.width > 0 && rect.height > 0,
+                        id: el.id || '',
+                        cls: (typeof el.className === 'string' ? el.className : '').slice(0, 60),
+                      });
+                      if (result.length >= 20) break;
+                    }
+                  }
+                  return JSON.stringify(result);
+                })()`).catch(() => '[]') as string
+                log('info', 'meta_api', 'fb_login: matching elements', { matches: (matches || '[]').slice(0, 500) })
                 // Try clicking the confirm button using scrollIntoView + MouseEvent
                 const clicked = await page.evaluate(`(function() {
                   const keywords = ['continue', 'next', 'send', 'confirm', 'ok'];
