@@ -16,7 +16,7 @@ import { log } from '../utils/logger'
 import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
 import { publishPost } from './metaGraph'
-import { facebookLogin, type RequestCodeHelper } from '../facebook'
+import { facebookLogin, type RequestCodeHelper, type LoginResult } from '../facebook'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -30,15 +30,13 @@ let latestQrDataUrl: string | null = null
 let ownPhone: string | null = null
 let ownLid: string | null = null
 
-interface Pending2FA {
-  resolve: (code: string) => void
+interface PendingAction {
+  resolve: (val: string) => void
   reject: (err: Error) => void
   timeout: NodeJS.Timeout
-  state: 'code' | 'confirm' | 'instruction'
-  page?: any
   sender: string
 }
-const pending2FA = new Map<string, Pending2FA>()
+const pendingActions = new Map<string, PendingAction>()
 
 interface ContactEntry {
   id: string;
@@ -1570,37 +1568,46 @@ _Example:_ ws test welcome bot: hello
     return true
   }
 
-  // ── ws fb login email password ── automatic Facebook login ──
+  // ── ws fb login email password ── Facebook login via CDP + VNC ──
   if (/^ws fb login\s+(-h|--help|-H)$/i.test(textContent.trim())) {
-    await sock.sendMessage(sender, { text: `📋 *ws fb login <email> <password>*\n\nAutomatically log into Facebook, obtain Page Access Tokens, and save them. Requires META_APP_ID and META_APP_SECRET in .env. If 2FA is enabled, you'll be asked to provide the code sent to your WhatsApp.\n\n_Example:_ ws fb login user@example.com mypassword` })
+    const tunnelDoc = `📋 *ws fb login <email> <password>*
+
+Automatically log into Facebook via CDP browser, handle CAPTCHA via VNC tunnel, and obtain Page Access Tokens.
+
+Prerequisites on VPS:
+1. \`Xvfb :99 -screen 0 480x900x24 &\`
+2. \`DISPLAY=:99 snap run chromium --no-sandbox --window-size=480,900 --remote-debugging-port=9336 --user-data-dir=/tmp/chrome-vnc-profile --disable-blink-features=AutomationControlled &\`
+3. \`x11vnc -display :99 -forever -shared -rfbport 5900 -quiet &\`
+4. \`/tmp/novnc/utils/novnc_proxy --vnc localhost:5900 --listen 8080 &\`
+5. \`cloudflared tunnel --url http://localhost:8080 &\`
+6. Set \`FB_TUNNEL_URL\` to the cloudflared URL in .env
+
+Example: ws fb login user@example.com mypassword`
+    await sock.sendMessage(sender, { text: tunnelDoc })
     return true
   }
   const fbLoginMatch = textContent.match(/^ws fb login\s+(\S+)\s+(\S+)$/is)
   if (fbLoginMatch) {
     const fbEmail = fbLoginMatch[1].trim()
     const fbPassword = fbLoginMatch[2].trim()
-    await sock.sendMessage(sender, { text: '🔄 Logging into Facebook with browser automation... This may take up to 60 seconds.' })
+    await sock.sendMessage(sender, { text: '🔄 Logging into Facebook via CDP browser...' })
+
     try {
       const normSender = normalizeJid(actualSender)
+      const normSenderKey = normSender
+
       const codeHelper: RequestCodeHelper = {
-        get: async (page, url) => {
-          if (url.includes('flow=two_factor_login')) {
-            await sock.sendMessage(sender, { text: '📱 *Check your phone.* Facebook sent a login confirmation notification. Tap "Yes, that was me" on your phone, then reply "done" here.' })
-            return new Promise<string>((resolve, reject) => {
-              const timeout = setTimeout(() => {
-                pending2FA.delete(normSender)
-                reject(new Error('⏰ Phone confirmation timed out (2 minutes). Run `ws fb login` again.'))
-              }, 120000)
-              pending2FA.set(normSender, { state: 'confirm', page, sender, resolve, reject, timeout })
-            })
-          }
-          await sock.sendMessage(sender, { text: '📱 *2FA code required.* Send the 6-digit code from your authenticator app here.' })
+        get: async (_page, _url) => {
+          const tunnelUrl = process.env.FB_TUNNEL_URL || 'VNC URL (set FB_TUNNEL_URL in .env)'
+          await sock.sendMessage(sender, {
+            text: `🔐 *Security check detected.*\n\nOpen this link on your phone:\n${tunnelUrl}\n\nSolve the puzzle in the browser, then reply "done" here.\n\nReply "abort" to cancel.`,
+          })
           return new Promise<string>((resolve, reject) => {
             const timeout = setTimeout(() => {
-              pending2FA.delete(normSender)
-              reject(new Error('⏰ 2FA code timed out (2 minutes). Run `ws fb login` again.'))
-            }, 120000)
-            pending2FA.set(normSender, { state: 'code', page, sender, resolve, reject, timeout })
+              pendingActions.delete(normSenderKey)
+              reject(new Error('⏰ CAPTCHA solving timed out (5 minutes).'))
+            }, 300000)
+            pendingActions.set(normSenderKey, { resolve, reject, timeout, sender })
           })
         },
         screenshot: async (page, caption) => {
@@ -1610,18 +1617,22 @@ _Example:_ ws test welcome bot: hello
           } catch {}
         },
       }
-      const result = await facebookLogin(fbEmail, fbPassword, codeHelper)
+
+      const result: LoginResult = await facebookLogin(fbEmail, fbPassword, codeHelper)
+
       if (!result.success) {
         if (!result.error?.includes('Cancelled by user')) {
           await sock.sendMessage(sender, { text: `❌ ${result.error}` })
         }
         return true
       }
+
       const user = await prisma.user.findFirst()
       if (!user) {
         await sock.sendMessage(sender, { text: '❌ No user found in database.' })
         return true
       }
+
       for (const page of result.pages!) {
         await prisma.facebookPage.upsert({
           where: { pageId: page.pageId },
@@ -1629,6 +1640,7 @@ _Example:_ ws test welcome bot: hello
           create: { pageId: page.pageId, pageName: page.pageName, accessToken: page.accessToken, userId: user.id },
         })
       }
+
       const lines = result.pages!.map(p => `✅ *${p.pageName}* (${p.pageId})`)
       await sock.sendMessage(sender, { text: `✅ Login successful! Saved ${result.pages!.length} page(s):\n\n${lines.join('\n')}` })
     } catch (err) {
@@ -1711,57 +1723,23 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     log('info', 'whatsapp', 'Incoming message', { sender, actualSender, fromMe: message.key.fromMe, text: textContent.slice(0, 100) })
 
-    // ── Pending 2FA: if this sender is waiting to provide input ──
-    const normFor2FA = normalizeJid(actualSender)
-    const pending = pending2FA.get(normFor2FA)
+    // ── Pending action (e.g., CAPTCHA confirmation) ──
+    const normForAction = normalizeJid(actualSender)
+    const pending = pendingActions.get(normForAction)
     if (pending) {
-      const text = textContent.trim()
-      if (text.toLowerCase() === 'abort' || text.toLowerCase() === 'cancel') {
+      const text = textContent.trim().toLowerCase()
+      if (text === 'abort' || text === 'cancel') {
         clearTimeout(pending.timeout)
-        pending2FA.delete(normFor2FA)
+        pendingActions.delete(normForAction)
         pending.reject(new Error('Cancelled by user.'))
-        await sock.sendMessage(sender, { text: '❌ Login cancelled.' })
+        await sock.sendMessage(sender, { text: '❌ Cancelled.' })
         return
       }
-      if (pending.state === 'code' && /^\d{6}$/.test(text)) {
+      if (text === 'done' || text === 'confirmed') {
         clearTimeout(pending.timeout)
-        pending2FA.delete(normFor2FA)
-        await sock.sendMessage(sender, { text: '✅ Code received, completing login...' })
-        pending.resolve(text)
-        return
-      }
-      if (pending.state === 'confirm' && (text.toLowerCase() === 'done' || text.toLowerCase() === 'confirmed')) {
-        await sock.sendMessage(sender, { text: '✅ Confirmed, sending screenshots every 7s... Reply "try another way" or whatever you want me to do.' })
-        // Start sending screenshots every 30s in the background
-        const screenshotInterval = setInterval(async () => {
-          if (pending.page) {
-            try {
-              const buf = await pending.page.screenshot()
-              await sock.sendMessage(sender, { image: buf, caption: '📸 Page state update (7s)' }).catch(() => {})
-            } catch {}
-          }
-        }, 7000)
-        // Transition to instruction state — stops interval on resolve
-        const oldResolve = pending.resolve
-        const oldReject = pending.reject
-        clearTimeout(pending.timeout)
-        const newTimeout = setTimeout(() => {
-          clearInterval(screenshotInterval)
-          pending2FA.delete(normFor2FA)
-          oldReject(new Error('⏰ No instruction received (3 minutes).'))
-        }, 180000)
-        pending2FA.set(normFor2FA, {
-          state: 'instruction', page: pending.page, sender,
-          resolve: (val: string) => { clearInterval(screenshotInterval); oldResolve(val) },
-          reject: (err: any) => { clearInterval(screenshotInterval); oldReject(err) },
-          timeout: newTimeout,
-        })
-        return
-      }
-      if (pending.state === 'instruction') {
-        clearTimeout(pending.timeout)
-        pending2FA.delete(normFor2FA)
-        pending.resolve(text)
+        pendingActions.delete(normForAction)
+        await sock.sendMessage(sender, { text: '✅ Proceeding...' })
+        pending.resolve('done')
         return
       }
     }

@@ -1,5 +1,3 @@
-import type { Page } from 'playwright'
-
 export interface LoginResult {
   success: boolean
   pages?: Array<{ pageId: string; pageName: string; accessToken: string }>
@@ -7,6 +5,6 @@ export interface LoginResult {
 }
 
 export interface RequestCodeHelper {
-  get: (page: Page, currentUrl: string) => Promise<string>
-  screenshot: (page: Page, caption: string) => Promise<void>
+  get: (page: any, currentUrl: string) => Promise<string>
+  screenshot: (page: any, caption: string) => Promise<void>
 }
