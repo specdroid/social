@@ -1,42 +1,57 @@
-import type { RequestCodeHelper, LoginResult } from './types'
-import { Flow } from './flow'
-import { CookieManager } from './session'
+import type { LoginResult } from './types'
 import { log } from '../utils/logger'
-import { chromium } from 'playwright'
-import path from 'path'
 
-const CDP_URL = process.env.FB_CDP_URL || 'http://127.0.0.1:9336'
-const DATA_DIR = path.resolve(__dirname, '../../data')
+const GRAPH_API_BASE = 'https://graph.facebook.com/v21.0'
 
-export type { RequestCodeHelper, LoginResult } from './types'
+async function graphPost(endpoint: string, params: Record<string, string>): Promise<any> {
+  const body = new URLSearchParams(params)
+  const res = await fetch(`${GRAPH_API_BASE}${endpoint}`, { method: 'POST', body })
+  return res.json()
+}
 
-export async function facebookLogin(email: string, password: string, requestCode?: RequestCodeHelper): Promise<LoginResult> {
-  log('info', 'meta_api', 'fb: starting login via CDP', { email, cdpUrl: CDP_URL })
+export type { LoginResult } from './types'
 
-  const flow = new Flow()
-  const cookies = new CookieManager(DATA_DIR)
+export function generateOAuthUrl(): string {
+  const appId = process.env.META_APP_ID
+  if (!appId) throw new Error('META_APP_ID not set in .env')
+  const redirectUri = 'https://www.facebook.com/connect/login_success.html'
+  const scope = 'pages_manage_posts,pages_read_engagement,pages_show_list'
+  return `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token,granted_scopes&scope=${encodeURIComponent(scope)}&auth_type=rerequest&display=popup`
+}
 
-  try {
-    log('info', 'meta_api', 'fb: connecting to CDP browser')
-    const browser = await chromium.connectOverCDP(CDP_URL)
-    const context = browser.contexts()[0] || await browser.newContext()
-    const pages = context.pages()
-    const page = pages[0] || await context.newPage()
-    log('info', 'meta_api', 'fb: connected to CDP browser')
+export async function processToken(token: string): Promise<LoginResult> {
+  const appId = process.env.META_APP_ID
+  const appSecret = process.env.META_APP_SECRET
+  if (!appId || !appSecret) return { success: false, error: 'META_APP_ID and META_APP_SECRET must be set in .env' }
 
-    // Try restoring saved cookies
-    const restored = await cookies.tryRestore(context, email)
-    if (restored) log('info', 'meta_api', 'fb: cookies restored')
+  log('info', 'meta_api', 'fb: exchanging token for long-lived')
+  const exchangeResult = await graphPost('/oauth/access_token', {
+    grant_type: 'fb_exchange_token',
+    client_id: appId,
+    client_secret: appSecret,
+    fb_exchange_token: token,
+  })
 
-    const result = await flow.run(page, email, password, requestCode)
-
-    if (result.success) {
-      await cookies.save(context, email)
-    }
-
-    return result
-  } catch (err) {
-    log('error', 'meta_api', 'fb: login failed', { error: (err as Error).message })
-    return { success: false, error: `Login failed: ${(err as Error).message}` }
+  const longLivedToken = exchangeResult.access_token
+  if (!longLivedToken) {
+    log('error', 'meta_api', 'fb: token exchange failed', { response: exchangeResult })
+    return { success: false, error: `Token exchange failed: ${JSON.stringify(exchangeResult)}` }
   }
+
+  log('info', 'meta_api', 'fb: fetching pages list')
+  const pagesResult = await graphPost('/me/accounts', { access_token: longLivedToken })
+
+  if (!pagesResult.data || pagesResult.data.length === 0) {
+    log('error', 'meta_api', 'fb: no pages found', { response: pagesResult })
+    return { success: false, error: 'No Facebook pages found for this token' }
+  }
+
+  const pages = pagesResult.data.map((p: any) => ({
+    pageId: p.id,
+    pageName: p.name || '',
+    accessToken: p.access_token,
+  }))
+
+  log('info', 'meta_api', 'fb: token processed', { pageCount: pages.length })
+  return { success: true, pages }
 }

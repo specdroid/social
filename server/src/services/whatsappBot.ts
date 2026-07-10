@@ -16,7 +16,7 @@ import { log } from '../utils/logger'
 import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
 import { publishPost } from './metaGraph'
-import { facebookLogin, type RequestCodeHelper, type LoginResult } from '../facebook'
+import { generateOAuthUrl, processToken, type LoginResult } from '../facebook'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -29,14 +29,6 @@ let stopReconnecting = false
 let latestQrDataUrl: string | null = null
 let ownPhone: string | null = null
 let ownLid: string | null = null
-
-interface PendingAction {
-  resolve: (val: string) => void
-  reject: (err: Error) => void
-  timeout: NodeJS.Timeout
-  sender: string
-}
-const pendingActions = new Map<string, PendingAction>()
 
 interface ContactEntry {
   id: string;
@@ -1568,71 +1560,26 @@ _Example:_ ws test welcome bot: hello
     return true
   }
 
-  // ── ws fb login email password ── Facebook login via CDP + VNC ──
-  if (/^ws fb login\s+(-h|--help|-H)$/i.test(textContent.trim())) {
-    const tunnelDoc = `📋 *ws fb login <email> <password>*
-
-Automatically log into Facebook via CDP browser, handle CAPTCHA via VNC tunnel, and obtain Page Access Tokens.
-
-Prerequisites on VPS:
-1. \`Xvfb :99 -screen 0 480x900x24 &\`
-2. \`DISPLAY=:99 snap run chromium --no-sandbox --window-size=480,900 --remote-debugging-port=9336 --user-data-dir=/tmp/chrome-vnc-profile --disable-blink-features=AutomationControlled &\`
-3. \`x11vnc -display :99 -forever -shared -rfbport 5900 -quiet &\`
-4. \`/tmp/novnc/utils/novnc_proxy --vnc localhost:5900 --listen 8080 &\`
-5. \`cloudflared tunnel --url http://localhost:8080 &\`
-6. Set \`FB_TUNNEL_URL\` to the cloudflared URL in .env
-
-Example: ws fb login user@example.com mypassword`
-    await sock.sendMessage(sender, { text: tunnelDoc })
+  // ── ws fb token <value> ── submit a Facebook access token manually ──
+  if (/^ws fb token\s+(-h|--help|-H)$/i.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws fb token <access_token>*\n\nSubmit a Facebook Page Access Token manually. Use \`ws fb login\` first to get the authorization URL.\n\n_Example:_ ws fb token EAAbx...` })
     return true
   }
-  const fbLoginMatch = textContent.match(/^ws fb login\s+(\S+)\s+(\S+)$/is)
-  if (fbLoginMatch) {
-    const fbEmail = fbLoginMatch[1].trim()
-    const fbPassword = fbLoginMatch[2].trim()
-    await sock.sendMessage(sender, { text: '🔄 Logging into Facebook via CDP browser...' })
-
+  const fbTokenMatch = textContent.match(/^ws fb token\s+(\S+)$/is)
+  if (fbTokenMatch) {
+    const token = fbTokenMatch[1].trim()
+    await sock.sendMessage(sender, { text: '🔄 Processing token...' })
     try {
-      const normSender = normalizeJid(actualSender)
-      const normSenderKey = normSender
-
-      const codeHelper: RequestCodeHelper = {
-        get: async (_page, _url) => {
-          const tunnelUrl = process.env.FB_TUNNEL_URL || 'VNC URL (set FB_TUNNEL_URL in .env)'
-          await sock.sendMessage(sender, {
-            text: `🔐 *Security check detected.*\n\nOpen this link on your phone:\n${tunnelUrl}\n\nSolve the puzzle in the browser, then reply "done" here.\n\nReply "abort" to cancel.`,
-          })
-          return new Promise<string>((resolve, reject) => {
-            const timeout = setTimeout(() => {
-              pendingActions.delete(normSenderKey)
-              reject(new Error('⏰ CAPTCHA solving timed out (5 minutes).'))
-            }, 300000)
-            pendingActions.set(normSenderKey, { resolve, reject, timeout, sender })
-          })
-        },
-        screenshot: async (page, caption) => {
-          try {
-            const buf = await page.screenshot()
-            await sock.sendMessage(sender, { image: buf, caption })
-          } catch {}
-        },
-      }
-
-      const result: LoginResult = await facebookLogin(fbEmail, fbPassword, codeHelper)
-
+      const result: LoginResult = await processToken(token)
       if (!result.success) {
-        if (!result.error?.includes('Cancelled by user')) {
-          await sock.sendMessage(sender, { text: `❌ ${result.error}` })
-        }
+        await sock.sendMessage(sender, { text: `❌ ${result.error}` })
         return true
       }
-
       const user = await prisma.user.findFirst()
       if (!user) {
         await sock.sendMessage(sender, { text: '❌ No user found in database.' })
         return true
       }
-
       for (const page of result.pages!) {
         await prisma.facebookPage.upsert({
           where: { pageId: page.pageId },
@@ -1640,11 +1587,38 @@ Example: ws fb login user@example.com mypassword`
           create: { pageId: page.pageId, pageName: page.pageName, accessToken: page.accessToken, userId: user.id },
         })
       }
-
       const lines = result.pages!.map(p => `✅ *${p.pageName}* (${p.pageId})`)
-      await sock.sendMessage(sender, { text: `✅ Login successful! Saved ${result.pages!.length} page(s):\n\n${lines.join('\n')}` })
+      await sock.sendMessage(sender, { text: `✅ Token processed! Saved ${result.pages!.length} page(s):\n\n${lines.join('\n')}` })
     } catch (err) {
-      await sock.sendMessage(sender, { text: `❌ Login failed: ${(err as Error).message}` })
+      await sock.sendMessage(sender, { text: `❌ Failed: ${(err as Error).message}` })
+    }
+    return true
+  }
+
+  // ── ws fb login ── generate Facebook OAuth authorization URL ──
+  if (/^ws fb login\s+(-h|--help|-H)$/i.test(textContent.trim())) {
+    await sock.sendMessage(sender, { text: `📋 *ws fb login*\n\nGenerate a Facebook OAuth URL. Open it on your phone or PC, authorize the app, then copy the *access_token* from the redirected URL and submit it with \`ws fb token <token>\`.\n\n_Example:_ ws fb login` })
+    return true
+  }
+  if (/^ws fb login$/i.test(textContent.trim())) {
+    try {
+      const url = generateOAuthUrl()
+      await sock.sendMessage(sender, {
+        text: `🔑 *Facebook Login*
+
+Open this link on your phone or PC and authorize the app:
+
+${url}
+
+After authorizing, you'll be redirected to a URL that contains *access_token=...*.
+Copy the token value and send it here with:
+
+\`ws fb token <access_token>\`
+
+_Example:_ ws fb token EAAbx...`,
+      })
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ ${(err as Error).message}` })
     }
     return true
   }
@@ -1722,27 +1696,6 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       ''
 
     log('info', 'whatsapp', 'Incoming message', { sender, actualSender, fromMe: message.key.fromMe, text: textContent.slice(0, 100) })
-
-    // ── Pending action (e.g., CAPTCHA confirmation) ──
-    const normForAction = normalizeJid(actualSender)
-    const pending = pendingActions.get(normForAction)
-    if (pending) {
-      const text = textContent.trim().toLowerCase()
-      if (text === 'abort' || text === 'cancel') {
-        clearTimeout(pending.timeout)
-        pendingActions.delete(normForAction)
-        pending.reject(new Error('Cancelled by user.'))
-        await sock.sendMessage(sender, { text: '❌ Cancelled.' })
-        return
-      }
-      if (text === 'done' || text === 'confirmed') {
-        clearTimeout(pending.timeout)
-        pendingActions.delete(normForAction)
-        await sock.sendMessage(sender, { text: '✅ Proceeding...' })
-        pending.resolve('done')
-        return
-      }
-    }
 
     let sharedAllGroups: Record<string, any> | undefined
 
