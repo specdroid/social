@@ -2,7 +2,6 @@ import 'express-async-errors'
 import express from 'express'
 import cors from 'cors'
 import path from 'path'
-import multer from 'multer'
 import fs from 'fs'
 import { env } from './config/env'
 import { errorHandler } from './middleware/errorHandler'
@@ -160,34 +159,20 @@ export function createApp(): express.Application {
   app.use('/webhooks/stripe', stripeWebhookRoutes)
 
   // ── Facebook cookies upload API ──────────────────────────────────────
-  const fbUpload = multer({
-    storage: multer.diskStorage({
-      destination: path.resolve(process.cwd()),
-      filename: () => 'fb_cookies.txt',
-    }),
-    limits: { fileSize: 1 * 1024 * 1024 },
-  })
 
   app.get('/api/fb-setup/status', (_req, res) => {
     const exists = fs.existsSync(path.resolve(process.cwd(), 'fb_cookies.txt'))
     res.json({ installed: exists })
   })
 
-  app.post('/api/fb-setup/upload', (req, res, next) => {
-    console.log('[fb-upload] POST /api/fb-setup/upload hit, content-type:', req.headers['content-type'])
-    fbUpload.single('cookies')(req, res, (err) => {
-      if (err) {
-        console.error('[fb-upload] multer error:', err)
-        res.status(400).json({ success: false, error: err.message })
-        return
-      }
-      console.log('[fb-upload] req.file:', req.file ? 'present' : 'missing')
-      if (!req.file) {
-        res.status(400).json({ success: false, error: 'No file uploaded' })
-        return
-      }
-      res.json({ success: true })
-    })
+  app.post('/api/fb-setup/upload', (req, res) => {
+    const { content } = req.body
+    if (!content || typeof content !== 'string') {
+      res.status(400).json({ success: false, error: 'Missing cookies content' })
+      return
+    }
+    fs.writeFileSync(path.resolve(process.cwd(), 'fb_cookies.txt'), content, 'utf-8')
+    res.json({ success: true })
   })
 
   app.use(errorHandler)
