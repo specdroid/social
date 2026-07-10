@@ -29,6 +29,14 @@ let stopReconnecting = false
 let latestQrDataUrl: string | null = null
 let ownPhone: string | null = null
 let ownLid: string | null = null
+
+interface Pending2FA {
+  resolve: (code: string) => void
+  reject: (err: Error) => void
+  timeout: NodeJS.Timeout
+}
+const pending2FA = new Map<string, Pending2FA>()
+
 interface ContactEntry {
   id: string;
   lid?: string;
@@ -955,6 +963,7 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
 async function processCommands(
   sock: WASocket,
   sender: string,
+  actualSender: string,
   textContent: string,
   message: WAMessage,
   allGroups: Record<string, any>,
@@ -1560,17 +1569,26 @@ _Example:_ ws test welcome bot: hello
 
   // ── ws fb login email password ── automatic Facebook login ──
   if (/^ws fb login\s+(-h|--help|-H)$/i.test(textContent.trim())) {
-    await sock.sendMessage(sender, { text: `📋 *ws fb login <email> <password> [code]*\n\nAutomatically log into Facebook, obtain Page Access Tokens, and save them. Requires META_APP_ID and META_APP_SECRET in .env. Include a 2FA code (from authenticator app or recovery code) if 2FA is enabled.\n\n_Example:_ ws fb login user@example.com mypassword\n_Example (2FA):_ ws fb login user@example.com mypassword 123456` })
+    await sock.sendMessage(sender, { text: `📋 *ws fb login <email> <password>*\n\nAutomatically log into Facebook, obtain Page Access Tokens, and save them. Requires META_APP_ID and META_APP_SECRET in .env. If 2FA is enabled, you'll be asked to provide the code sent to your WhatsApp.\n\n_Example:_ ws fb login user@example.com mypassword` })
     return true
   }
-  const fbLoginMatch = textContent.match(/^ws fb login\s+(\S+)\s+(\S+)(?:\s+(\S+))?$/is)
+  const fbLoginMatch = textContent.match(/^ws fb login\s+(\S+)\s+(\S+)$/is)
   if (fbLoginMatch) {
     const fbEmail = fbLoginMatch[1].trim()
     const fbPassword = fbLoginMatch[2].trim()
-    const fbCode = fbLoginMatch[3]?.trim()
     await sock.sendMessage(sender, { text: '🔄 Logging into Facebook with browser automation... This may take up to 60 seconds.' })
     try {
-      const result = await facebookLogin(fbEmail, fbPassword, fbCode)
+      const normSender = normalizeJid(actualSender)
+      const result = await facebookLogin(fbEmail, fbPassword, async () => {
+        await sock.sendMessage(sender, { text: '📱 *2FA code required.*\n\nCheck your WhatsApp for the Facebook login code and send it here as a reply (6 digits).' })
+        return new Promise<string>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            pending2FA.delete(normSender)
+            reject(new Error('⏰ 2FA code timed out (2 minutes). Run `ws fb login` again when you have a code ready.'))
+          }, 120000)
+          pending2FA.set(normSender, { resolve, reject, timeout })
+        })
+      })
       if (!result.success) {
         await sock.sendMessage(sender, { text: `❌ ${result.error}` })
         return true
@@ -1669,6 +1687,17 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     log('info', 'whatsapp', 'Incoming message', { sender, actualSender, fromMe: message.key.fromMe, text: textContent.slice(0, 100) })
 
+    // ── Pending 2FA: if this sender is waiting to provide a code ──
+    const normFor2FA = normalizeJid(actualSender)
+    const pending = pending2FA.get(normFor2FA)
+    if (pending && /^\d{6}$/.test(textContent.trim())) {
+      clearTimeout(pending.timeout)
+      pending2FA.delete(normFor2FA)
+      await sock.sendMessage(sender, { text: '✅ Code received, completing login...' })
+      pending.resolve(textContent.trim())
+      return
+    }
+
     let sharedAllGroups: Record<string, any> | undefined
 
     // ── Handle fromMe messages → route by prefix ──────────────────────
@@ -1679,7 +1708,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       sharedAllGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
       const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter((x): x is string => !!x)
 
-      const handled = await processCommands(sock, sender, textContent, message, sharedAllGroups, myJids)
+      const handled = await processCommands(sock, sender, actualSender, textContent, message, sharedAllGroups, myJids)
       if (handled) return
       // Not a command — fall through so automation rules can process trigger words
     }
@@ -1709,7 +1738,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
             log('info', 'whatsapp', 'Gateway allowed group check', { name: groupName, allowed: !!allowedGrp })
             if (allowedGrp) {
               const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter((x): x is string => !!x)
-              const handled = await processCommands(sock, sender, textContent, message, sharedAllGroups, myJids)
+              const handled = await processCommands(sock, sender, actualSender, textContent, message, sharedAllGroups, myJids)
               if (handled) return
             }
           } catch { /* ignore */ }

@@ -94,7 +94,7 @@ export function createApp(): express.Application {
         },
         {
           command: 'ws fb login <email> <password>',
-          description: 'Automatically log into Facebook via browser automation, obtain and save Page Access Tokens.',
+          description: 'Automatically log into Facebook via browser automation, obtain and save Page Access Tokens. If 2FA is enabled, you\'ll be asked to provide the code sent to your WhatsApp.',
           example: 'ws fb login user@example.com mypassword',
         },
         {
