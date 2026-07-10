@@ -10,6 +10,7 @@ import { Server as SocketIOServer } from 'socket.io'
 import { PrismaClient } from '@prisma/client'
 import path from 'path'
 import fs from 'fs'
+import os from 'os'
 import { execFile } from 'child_process'
 import QRCode from 'qrcode'
 import { SocksProxyAgent } from 'socks-proxy-agent'
@@ -1521,18 +1522,18 @@ _Example:_ ws test welcome bot: hello
       let filePath: string | null = null
 
       if (imageMsg) {
-        const buffer = await downloadMediaMessage(message, 'buffer', {})
+        const buffer = await downloadMediaMessage(message, 'buffer', {}) as Buffer
         const fileName = `fb_${Date.now()}.jpg`
-        const fpath = path.resolve(process.cwd(), 'uploads', fileName)
-        fs.writeFileSync(fpath, buffer as Buffer)
+        const fpath = path.resolve(os.tmpdir(), fileName)
+        fs.writeFileSync(fpath, buffer)
         filePath = fpath
         content = imageMsg.caption || wallContent || ''
       } else if (docMsg) {
-        const buffer = await downloadMediaMessage(message, 'buffer', {})
+        const buffer = await downloadMediaMessage(message, 'buffer', {}) as Buffer
         const ext = path.extname(docMsg.fileName || 'document') || '.bin'
         const fileName = `fb_${Date.now()}${ext}`
-        const fpath = path.resolve(process.cwd(), 'uploads', fileName)
-        fs.writeFileSync(fpath, buffer as Buffer)
+        const fpath = path.resolve(os.tmpdir(), fileName)
+        fs.writeFileSync(fpath, buffer)
         filePath = fpath
         content = docMsg.caption || wallContent || ''
       }
@@ -1549,25 +1550,30 @@ _Example:_ ws test welcome bot: hello
 
       await sock.sendMessage(sender, { text: '🔄 Posting to Facebook wall via browser...' })
 
-      const stdout = await new Promise<string>((resolve, reject) => {
-        execFile(pythonBin, [scriptPath, ...args], { timeout: 120000 }, (err, stdout, stderr) => {
-          if (err) {
-            const msg = (stderr || '').trim() || (stdout || '').trim() || err.message
-            reject(new Error(msg))
-          } else resolve(stdout)
+      try {
+        const stdout = await new Promise<string>((resolve, reject) => {
+          execFile(pythonBin, [scriptPath, ...args], { timeout: 120000 }, (err, stdout, stderr) => {
+            if (err) {
+              const msg = (stderr || '').trim() || (stdout || '').trim() || err.message
+              reject(new Error(msg))
+            } else resolve(stdout)
+          })
         })
-      })
 
-      // Take the last JSON line (diagnostic lines may precede it)
-      const lines = stdout.trim().split('\n').filter(l => l.trim())
-      const lastLine = lines[lines.length - 1] || '{}'
-      const result = JSON.parse(lastLine)
-      if (result.success) {
-        await sock.sendMessage(sender, { text: `✅ Posted to Facebook wall\n${content.slice(0, 200)}` })
-        log('info', 'whatsapp', 'facebook_wall: post sent')
-      } else {
-        await sock.sendMessage(sender, { text: `❌ Wall post failed: ${result.error}` })
-        log('error', 'whatsapp', 'facebook_wall: post failed', { error: result.error })
+        const lines = stdout.trim().split('\n').filter(l => l.trim())
+        const lastLine = lines[lines.length - 1] || '{}'
+        const result = JSON.parse(lastLine)
+        if (result.success) {
+          await sock.sendMessage(sender, { text: `✅ Posted to Facebook wall\n${content.slice(0, 200)}` })
+          log('info', 'whatsapp', 'facebook_wall: post sent')
+        } else {
+          await sock.sendMessage(sender, { text: `❌ Wall post failed: ${result.error}` })
+          log('error', 'whatsapp', 'facebook_wall: post failed', { error: result.error })
+        }
+      } finally {
+        if (filePath) {
+          try { fs.unlinkSync(filePath) } catch { /* ignore */ }
+        }
       }
     } catch (err) {
       await sock.sendMessage(sender, { text: `❌ Wall post failed: ${(err as Error).message}` })
