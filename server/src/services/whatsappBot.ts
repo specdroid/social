@@ -1542,7 +1542,7 @@ _Example:_ ws test welcome bot: hello
 
       const stdout = await new Promise<string>((resolve, reject) => {
         execFile(pythonBin, [scriptPath, ...args], { timeout: 60000 }, (err, stdout, stderr) => {
-          if (err) reject(new Error(stderr || err.message))
+          if (err) reject(new Error(stderr ? stderr.trim() : err.message))
           else resolve(stdout)
         })
       })

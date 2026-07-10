@@ -15,7 +15,7 @@ from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import TimeoutException
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FB_URL = 'https://facebook.com/me'
@@ -181,8 +181,8 @@ def main():
         time.sleep(4)
         print(json.dumps({'success': True}))
 
-    except WebDriverException as e:
-        print(json.dumps({'success': False, 'error': f'Browser error: {e}'}))
+    except Exception as e:
+        print(json.dumps({'success': False, 'error': f'{type(e).__name__}: {e}'}))
     finally:
         if driver:
             try:
