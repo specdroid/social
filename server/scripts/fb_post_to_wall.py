@@ -18,11 +18,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-FB_URL = 'https://facebook.com/me'
+FB_URL = 'https://facebook.com'
 
 
 def find_chromedriver():
-    """Locate chromedriver binary."""
     candidates = [
         '/usr/bin/chromedriver',
         '/snap/chromium/current/usr/lib/chromium-browser/chromedriver',
@@ -33,13 +32,11 @@ def find_chromedriver():
     for c in candidates:
         if os.path.isfile(c) or os.path.isfile('/' + c.lstrip('/')):
             return c
-    # Fall back to PATH lookup
     import shutil
     return shutil.which('chromedriver') or shutil.which('chromium.chromedriver')
 
 
 def load_cookies(driver, cookies_path):
-    """Load Netscape-format cookies.txt into the browser."""
     driver.get('https://facebook.com')
     with open(cookies_path) as f:
         for line in f:
@@ -62,6 +59,15 @@ def load_cookies(driver, cookies_path):
                 })
 
 
+def js_click(driver, xpath):
+    try:
+        el = driver.find_element(By.XPATH, xpath)
+        driver.execute_script('arguments[0].click();', el)
+        return True
+    except Exception:
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--content', required=True)
@@ -69,8 +75,6 @@ def main():
     parser.add_argument('--cookies', default=None,
                         help='Path to Netscape-format cookies.txt exported from Chrome')
     args = parser.parse_args()
-
-    print(json.dumps({'success': False, 'error': 'started'}), flush=True)
 
     options = webdriver.ChromeOptions()
     options.add_argument('--headless=new')
@@ -80,7 +84,6 @@ def main():
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
 
-    # If a profile directory exists, use it
     profile_dir = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'fb_profile'))
     if os.path.isdir(profile_dir):
         options.add_argument(f'--user-data-dir={profile_dir}')
@@ -88,22 +91,15 @@ def main():
     driver = None
     try:
         chromedriver_path = find_chromedriver()
-        print(json.dumps({'success': False, 'error': f'chromedriver: {chromedriver_path}'}), flush=True)
         if not chromedriver_path:
-            print(json.dumps({'success': False, 'error': 'chromedriver not found. Install chromium-chromedriver or place it in PATH.'}), flush=True)
+            print(json.dumps({'success': False, 'error': 'chromedriver not found'}))
             return
-        print(json.dumps({'success': False, 'error': 'creating ChromeService...'}), flush=True)
         service = ChromeService(chromedriver_path)
-        print(json.dumps({'success': False, 'error': 'creating driver...'}), flush=True)
-        driver = webdriver.Chrome(service=service, options=options)
-        print(json.dumps({'success': False, 'error': 'driver created!'}), flush=True)
         driver = webdriver.Chrome(service=service, options=options)
 
-        # Load cookies if provided
         if args.cookies and os.path.isfile(args.cookies):
             load_cookies(driver, args.cookies)
 
-        # Navigate to own timeline
         driver.get(FB_URL)
         wait = WebDriverWait(driver, 20)
 
@@ -113,6 +109,7 @@ def main():
             "//span[contains(text(),\"What's on your mind\")]",
             "//div[@role='button' and contains(@aria-label,\"What's on your mind\")]",
             "//div[@role='textbox' and contains(@aria-label,\"What's on your mind?\")]",
+            "//*[@aria-label='Create a post']",
         ]:
             try:
                 wait.until(EC.presence_of_element_located((By.XPATH, selector)))
@@ -124,22 +121,24 @@ def main():
         if not logged_in:
             page_title = driver.title.lower()
             if 'login' in page_title or 'log in' in page_title:
-                print(json.dumps({'success': False, 'error': 'Not logged in. Export a fresh cookies.txt from Chrome while on facebook.com.'}), flush=True)
+                print(json.dumps({'success': False, 'error': 'Not logged in. Export a fresh cookies.txt from Chrome while on facebook.com.'}))
             else:
-                print(json.dumps({'success': False, 'error': 'Could not find the post box. Facebook page structure may have changed.'}), flush=True)
+                print(json.dumps({'success': False, 'error': 'Could not find the post box. Facebook page structure may have changed.'}))
             return
 
-        # Click the post box trigger
-        try:
-            post_trigger = driver.find_element(By.XPATH, "//span[contains(text(),\"What's on your mind\")]")
-            post_trigger.click()
-        except Exception:
-            try:
-                post_trigger = driver.find_element(By.XPATH, "//div[@role='button' and contains(@aria-label,\"What's on your mind\")]")
-                post_trigger.click()
-            except Exception as e:
-                print(json.dumps({'success': False, 'error': f'Failed to click post box: {e}'}), flush=True)
-                return
+        # Click the post box trigger (JS click to bypass interception)
+        clicked = False
+        for xpath in [
+            "//span[contains(text(),\"What's on your mind\")]",
+            "//div[@role='button' and contains(@aria-label,\"What's on your mind\")]",
+            "//*[@aria-label='Create a post']",
+        ]:
+            if js_click(driver, xpath):
+                clicked = True
+                break
+        if not clicked:
+            print(json.dumps({'success': False, 'error': 'Failed to click post box'}))
+            return
 
         time.sleep(2)
 
@@ -154,7 +153,7 @@ def main():
                     (By.XPATH, "//div[@role='textbox']")
                 ))
             except TimeoutException as e:
-                print(json.dumps({'success': False, 'error': f'Could not find text input: {e}'}), flush=True)
+                print(json.dumps({'success': False, 'error': f'Could not find text input: {e}'}))
                 return
 
         textbox.click()
@@ -168,7 +167,7 @@ def main():
                 file_input.send_keys(os.path.abspath(args.image))
                 time.sleep(3)
             except Exception as e:
-                print(json.dumps({'success': False, 'error': f'Image upload failed: {e}'}), flush=True)
+                print(json.dumps({'success': False, 'error': f'Image upload failed: {e}'}))
                 return
 
         time.sleep(1)
@@ -182,14 +181,14 @@ def main():
                 post_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[contains(text(),'Post')]/..")))
                 post_btn.click()
             except TimeoutException as e:
-                print(json.dumps({'success': False, 'error': f'Could not find Post button: {e}'}), flush=True)
+                print(json.dumps({'success': False, 'error': f'Could not find Post button: {e}'}))
                 return
 
         time.sleep(4)
-        print(json.dumps({'success': True}), flush=True)
+        print(json.dumps({'success': True}))
 
     except Exception as e:
-        print(json.dumps({'success': False, 'error': f'{type(e).__name__}: {e}'}), flush=True)
+        print(json.dumps({'success': False, 'error': f'{type(e).__name__}: {e}'}))
     finally:
         if driver:
             try:
