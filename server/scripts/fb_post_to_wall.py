@@ -105,95 +105,51 @@ def main():
             load_cookies(driver, args.cookies)
 
         driver.get(FB_URL)
-        time.sleep(5)
 
-        # Dismiss "Continue as [name]" dialog
-        try:
-            # Debug: dump elements with Continue in textContent
-            dump = driver.execute_script("""
-                const all = [...document.querySelectorAll('*')]
-                    .filter(e => e.textContent.trim().includes('Continue'));
-                const exact = all.filter(e => e.textContent.trim() === 'Continue');
-                const partial = all.filter(e => e.textContent.trim() !== 'Continue').slice(0,5);
-                return {
-                    exactCount: exact.length,
-                    exact: exact.slice(0,5).map(e => ({
-                        tag: e.tagName,
-                        role: e.getAttribute('role'),
-                        outer: e.outerHTML.substring(0,200)
-                    })),
-                    partial: partial.map(e => ({
-                        tag: e.tagName,
-                        role: e.getAttribute('role'),
-                        text: e.textContent.trim().substring(0,80),
-                        outer: e.outerHTML.substring(0,150)
-                    }))
-                };
-            """)
-            json.dump(dump, open('/tmp/fb_cont_debug2.json', 'w'), indent=2)
-            # Try to click based on findings
-            if dump.get('exactCount', 0) > 0:
-                driver.execute_script("""
-                    const all = [...document.querySelectorAll('*')]
-                        .filter(e => e.textContent.trim() === 'Continue');
-                    // Click the FIRST element that is itself a button or has role="button"
-                    for (const el of all) {
-                        const role = el.getAttribute('role');
-                        if (role === 'button' || el.tagName === 'BUTTON' || el.tagName === 'A') {
-                            el.click();
-                            return;
-                        }
-                    }
-                    // Fallback: walk up from each element
-                    for (const el of all) {
-                        let parent = el.parentElement;
-                        while (parent && parent !== document.body) {
-                            const role = parent.getAttribute('role');
-                            if (role === 'button' || parent.tagName === 'BUTTON' || parent.tagName === 'A') {
-                                parent.click();
-                                return;
-                            }
-                            parent = parent.parentElement;
-                        }
-                    }
-                    // Last resort: click first visible Continue element
-                    for (const el of all) {
-                        if (el.offsetParent !== null) {
-                            el.click();
-                            return;
-                        }
-                    }
-                """)
-                time.sleep(3)
-            else:
-                # Fallback: try clicking the first visible button in the login area
-                driver.execute_script("""
-                    const btns = [...document.querySelectorAll('[role="button"]')]
-                        .filter(e => e.offsetParent !== null && e.textContent.trim().length > 0);
-                    for (const btn of btns) {
-                        btn.click();
-                        break;
-                    }
-                """)
-                time.sleep(3)
-        except Exception:
-            pass
-
-        # Check if logged in (instant find_elements, no slow wait.until)
-        logged_in = False
-        for selector in [
+        # Retry loop: dismiss Continue dialog and wait for post box (up to 40s)
+        POST_SELECTORS = [
             "//span[contains(text(),\"What's on your mind\")]",
             "//div[@role='button' and contains(@aria-label,\"What's on your mind\")]",
             "//div[@role='textbox' and contains(@aria-label,\"What's on your mind?\")]",
             "//*[@aria-label='Create a post']",
-        ]:
-            if driver.find_elements(By.XPATH, selector):
-                logged_in = True
+        ]
+        logged_in = False
+        for attempt in range(40):
+            time.sleep(1)
+
+            # Click Continue button if visible
+            try:
+                btns = driver.execute_script("""
+                    return [...document.querySelectorAll('[role="button"]')]
+                        .filter(e => e.offsetParent !== null && e.textContent.trim() === 'Continue');
+                """)
+                if btns and len(btns) > 0:
+                    driver.execute_script('arguments[0].click();', btns[0])
+                    time.sleep(1)
+                    continue
+            except Exception:
+                pass
+
+            # Try clicking by aria-label
+            try:
+                aria_btn = driver.find_element(By.XPATH, "//*[@aria-label='Continue Ahmad Zein Eddine']")
+                if aria_btn:
+                    driver.execute_script('arguments[0].click();', aria_btn)
+                    time.sleep(1)
+                    continue
+            except Exception:
+                pass
+
+            # Check if logged in
+            for sel in POST_SELECTORS:
+                if driver.find_elements(By.XPATH, sel):
+                    logged_in = True
+                    break
+
+            if logged_in:
                 break
-
-        wait = WebDriverWait(driver, 20)
-
-        if not logged_in:
+        else:
+            # All attempts exhausted
             page_title = driver.title.lower()
             page_url = driver.current_url
             if 'login' in page_title or 'log in' in page_title:
@@ -211,6 +167,8 @@ def main():
                 diag += f' body="{body_text}"'
                 print(json.dumps({'success': False, 'error': f'Could not find the post box. {diag}'}), flush=True)
             return
+
+        wait = WebDriverWait(driver, 20)
 
         # Click the post box trigger (JS click to bypass interception)
         clicked = False
