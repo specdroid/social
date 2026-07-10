@@ -16,7 +16,7 @@ import { log } from '../utils/logger'
 import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
 import { publishPost } from './metaGraph'
-import { facebookLogin, type RequestCodeHelper } from './facebookLogin'
+import { facebookLogin, type RequestCodeHelper } from '../facebook'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')

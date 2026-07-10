@@ -148,6 +148,14 @@ model AllowedGroup {
   createdAt DateTime @default(now())
 }
 
+model FacebookSession {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  cookies   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model RetryQueue {
   id          String   @id @default(cuid())
   source      String
