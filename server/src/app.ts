@@ -12,6 +12,12 @@ import metaWebhookRoutes from './routes/webhooks/meta'
 import stripeWebhookRoutes from './routes/webhooks/stripe'
 import uploadRoutes from './routes/upload'
 import facebookRoutes from './routes/facebook'
+import { exchangeCodeForToken } from './facebook'
+import { sendWhatsAppMessage } from './services/whatsappBot'
+import { PrismaClient } from '@prisma/client'
+import { log } from './utils/logger'
+
+const prisma = new PrismaClient()
 
 export function createApp(): express.Application {
   const app = express()
@@ -93,9 +99,9 @@ export function createApp(): express.Application {
           example: 'ws list schools: Hello everyone!',
         },
         {
-          command: 'ws fb login <email> <password>',
-          description: 'Automatically log into Facebook via browser automation, obtain and save Page Access Tokens. If 2FA is enabled, you\'ll be asked to provide the code sent to your WhatsApp.',
-          example: 'ws fb login user@example.com mypassword',
+          command: 'ws fb login',
+          description: 'Generate a Facebook OAuth URL. Open it in your browser, authorize the app, and the access token will be saved automatically.',
+          example: 'ws fb login',
         },
         {
           command: 'ws test <rule name>: <trigger>',
@@ -151,6 +157,52 @@ export function createApp(): express.Application {
 
   app.use('/webhooks/meta', metaWebhookRoutes)
   app.use('/webhooks/stripe', stripeWebhookRoutes)
+
+  // ── Facebook OAuth callback ──────────────────────────────────────────
+  app.get('/auth/facebook/callback', async (req, res) => {
+    const { code, state } = req.query as { code?: string; state?: string }
+    if (!code || !state) {
+      res.status(400).send('<h1>Missing code or state parameter</h1>')
+      return
+    }
+
+    const sender = state
+    log('info', 'meta_api', 'fb: OAuth callback received', { sender })
+
+    try {
+      const result = await exchangeCodeForToken(code)
+      if (!result.success) {
+        await sendWhatsAppMessage(sender, `❌ Facebook login failed: ${result.error}`)
+        res.send(`<h1>Login Failed</h1><p>${result.error}</p>`)
+        return
+      }
+
+      const user = await prisma.user.findFirst()
+      if (!user) {
+        await sendWhatsAppMessage(sender, '❌ No user found in database.')
+        res.send('<h1>Login Failed</h1><p>No user found in database.</p>')
+        return
+      }
+
+      for (const page of result.pages!) {
+        await prisma.facebookPage.upsert({
+          where: { pageId: page.pageId },
+          update: { accessToken: page.accessToken, pageName: page.pageName, userId: user.id },
+          create: { pageId: page.pageId, pageName: page.pageName, accessToken: page.accessToken, userId: user.id },
+        })
+      }
+
+      const lines = result.pages!.map(p => `✅ *${p.pageName}* (${p.pageId})`)
+      await sendWhatsAppMessage(sender, `✅ Facebook login successful! Saved ${result.pages!.length} page(s):\n\n${lines.join('\n')}`)
+
+      res.send(`<h1>Login Successful</h1><p>You can close this tab. Check WhatsApp for confirmation.</p>`)
+    } catch (err) {
+      const msg = (err as Error).message
+      log('error', 'meta_api', 'fb: OAuth callback error', { error: msg })
+      try { await sendWhatsAppMessage(sender, `❌ Facebook login failed: ${msg}`) } catch {}
+      res.send(`<h1>Login Failed</h1><p>${msg}</p>`)
+    }
+  })
 
   app.use(errorHandler)
 

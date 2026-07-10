@@ -15,6 +15,7 @@ const envSchema = z.object({
 
   META_APP_ID: z.string().default(''),
   META_APP_SECRET: z.string().default(''),
+  META_REDIRECT_URI: z.string().default(''),
   META_VERIFY_TOKEN: z.string().default(''),
 
   STRIPE_SECRET_KEY: z.string().default(''),

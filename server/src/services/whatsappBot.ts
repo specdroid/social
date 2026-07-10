@@ -16,7 +16,7 @@ import { log } from '../utils/logger'
 import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
 import { publishPost } from './metaGraph'
-import { generateOAuthUrl, processToken, type LoginResult } from '../facebook'
+import { generateOAuthUrl } from '../facebook'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -105,6 +105,12 @@ function realisticBrowser(): [string, string, string] {
     ['Windows', 'Edge', '131.0.2903'],
   ]
   return browsers[Math.floor(Math.random() * browsers.length)]
+}
+
+/** Send a text message to a WhatsApp JID using the active socket. */
+export async function sendWhatsAppMessage(jid: string, text: string): Promise<void> {
+  if (!currentSocket) throw new Error('WhatsApp bot not connected')
+  await currentSocket.sendMessage(jid, { text })
 }
 
 export function cleanupAuthFolder(): { deleted: number; keptCreds: boolean } {
@@ -1560,62 +1566,23 @@ _Example:_ ws test welcome bot: hello
     return true
   }
 
-  // ── ws fb token <value> ── submit a Facebook access token manually ──
-  if (/^ws fb token\s+(-h|--help|-H)$/i.test(textContent.trim())) {
-    await sock.sendMessage(sender, { text: `📋 *ws fb token <access_token>*\n\nSubmit a Facebook Page Access Token manually. Use \`ws fb login\` first to get the authorization URL.\n\n_Example:_ ws fb token EAAbx...` })
-    return true
-  }
-  const fbTokenMatch = textContent.match(/^ws fb token\s+(\S+)$/is)
-  if (fbTokenMatch) {
-    const token = fbTokenMatch[1].trim()
-    await sock.sendMessage(sender, { text: '🔄 Processing token...' })
-    try {
-      const result: LoginResult = await processToken(token)
-      if (!result.success) {
-        await sock.sendMessage(sender, { text: `❌ ${result.error}` })
-        return true
-      }
-      const user = await prisma.user.findFirst()
-      if (!user) {
-        await sock.sendMessage(sender, { text: '❌ No user found in database.' })
-        return true
-      }
-      for (const page of result.pages!) {
-        await prisma.facebookPage.upsert({
-          where: { pageId: page.pageId },
-          update: { accessToken: page.accessToken, pageName: page.pageName, userId: user.id },
-          create: { pageId: page.pageId, pageName: page.pageName, accessToken: page.accessToken, userId: user.id },
-        })
-      }
-      const lines = result.pages!.map(p => `✅ *${p.pageName}* (${p.pageId})`)
-      await sock.sendMessage(sender, { text: `✅ Token processed! Saved ${result.pages!.length} page(s):\n\n${lines.join('\n')}` })
-    } catch (err) {
-      await sock.sendMessage(sender, { text: `❌ Failed: ${(err as Error).message}` })
-    }
-    return true
-  }
-
   // ── ws fb login ── generate Facebook OAuth authorization URL ──
   if (/^ws fb login\s+(-h|--help|-H)$/i.test(textContent.trim())) {
-    await sock.sendMessage(sender, { text: `📋 *ws fb login*\n\nGenerate a Facebook OAuth URL. Open it on your phone or PC, authorize the app, then copy the *access_token* from the redirected URL and submit it with \`ws fb token <token>\`.\n\n_Example:_ ws fb login` })
+    await sock.sendMessage(sender, { text: `📋 *ws fb login*\n\nGenerate a Facebook OAuth URL. Open it in your browser, log into Facebook and authorize the app. The access token will be saved automatically.\n\n_Example:_ ws fb login` })
     return true
   }
   if (/^ws fb login$/i.test(textContent.trim())) {
     try {
-      const url = generateOAuthUrl()
+      const normSender = normalizeJid(actualSender)
+      const url = generateOAuthUrl(normSender)
       await sock.sendMessage(sender, {
         text: `🔑 *Facebook Login*
 
-Open this link on your phone or PC and authorize the app:
+Open this link in your browser and authorize the app:
 
 ${url}
 
-After authorizing, you'll be redirected to a URL that contains *access_token=...*.
-Copy the token value and send it here with:
-
-\`ws fb token <access_token>\`
-
-_Example:_ ws fb token EAAbx...`,
+After you authorize, the token will be saved automatically and you'll get a confirmation here.`,
       })
     } catch (err) {
       await sock.sendMessage(sender, { text: `❌ ${(err as Error).message}` })
