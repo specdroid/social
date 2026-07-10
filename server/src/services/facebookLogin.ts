@@ -200,13 +200,28 @@ export async function facebookLogin(email: string, password: string, requestCode
               return { success: false, error: 'Facebook sent a login confirmation to your phone. Approve it and retry.' }
             }
             log('info', 'meta_api', 'fb_login: asking user to confirm on phone')
-            await requestCode(page, currentUrl) // waits for user to reply "done", reloads page
+            const instruction = await requestCode(page, currentUrl) // user's instruction after screenshot
             await new Promise(r => setTimeout(r, 3000))
 
-            // Try clicking any available button
-            const confirmToken = await waitForConsent(page)
-            if (confirmToken) { shortLivedToken = confirmToken; break }
-            if (!is2FA(page.url())) break
+            // Follow user instruction from the screenshot
+            if (/try\s*(another|different)\s*way/.test(instruction.toLowerCase())) {
+              log('info', 'meta_api', 'fb_login: clicking "Try another way"')
+              const btns = await page.$$('button, [role="button"], a[role="button"], div[role="button"]')
+              for (const b of btns) {
+                const t = await page.evaluate((el) => (el.textContent || '').trim().toLowerCase(), b).catch(() => '')
+                if (t.includes('try another way')) {
+                  await page.evaluate((el) => el.click(), b).catch(() => {})
+                  await new Promise(r => setTimeout(r, 4000))
+                  break
+                }
+              }
+              // Continue loop; next iteration will detect the code page if navigated
+            } else {
+              // Default: try consent buttons
+              const confirmToken = await waitForConsent(page)
+              if (confirmToken) { shortLivedToken = confirmToken; break }
+              if (!is2FA(page.url())) break
+            }
 
           } else if (is2FACodePage(currentUrl)) {
             if (!requestCode) {
