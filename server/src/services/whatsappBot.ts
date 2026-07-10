@@ -1582,7 +1582,7 @@ _Example:_ ws test welcome bot: hello
 
 Open this page in your browser for step-by-step instructions on how to export and upload your Facebook cookies:
 
-${baseUrl}/fb-setup`,
+${baseUrl}/facebook`,
     })
     return true
   }
