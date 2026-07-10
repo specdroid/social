@@ -235,52 +235,73 @@ export async function facebookLogin(email: string, password: string, requestCode
                 })()`)
                 await new Promise(r => setTimeout(r, 3000))
 
-                // Log all elements matching keywords for debugging
-                const matches = await page.evaluate(`(function() {
-                  const keywords = ['continue', 'next', 'send', 'confirm', 'ok'];
-                  const result = [];
-                  const all = document.querySelectorAll('*');
-                  for (const el of all) {
-                    const text = (el.textContent || '').trim().toLowerCase();
-                    if (keywords.some(k => text === k || text.startsWith(k + ' ') || text.includes(k))) {
-                      const rect = el.getBoundingClientRect();
-                      result.push({
-                        tag: el.tagName,
-                        text: text.slice(0, 40),
-                        w: Math.round(rect.width),
-                        h: Math.round(rect.height),
-                        visible: rect.width > 0 && rect.height > 0,
-                        id: el.id || '',
-                        cls: (typeof el.className === 'string' ? el.className : '').slice(0, 60),
-                      });
-                      if (result.length >= 20) break;
-                    }
+                // Select last radio option (WhatsApp)
+                await page.evaluate(`(function() {
+                  const radios = document.querySelectorAll('input[type="radio"], [role="radio"]');
+                  const last = radios[radios.length - 1];
+                  if (last) {
+                    last.scrollIntoView({ block: 'center' });
+                    last.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
                   }
-                  return JSON.stringify(result);
-                })()`).catch(() => '[]') as string
-                log('info', 'meta_api', 'fb_login: matching elements', { matches: (matches || '[]').slice(0, 500) })
-                // Try clicking the confirm button using scrollIntoView + MouseEvent
-                const clicked = await page.evaluate(`(function() {
-                  const keywords = ['continue', 'next', 'send', 'confirm', 'ok'];
-                  // Search all elements by text
-                  const all = document.querySelectorAll('*');
-                  for (const el of all) {
-                    const text = (el.textContent || '').trim().toLowerCase();
-                    if (keywords.some(k => text === k || text.startsWith(k + ' ') || text.includes(k))) {
-                      const rect = el.getBoundingClientRect();
-                      if (rect.width > 0 && rect.height > 0 && 'click' in el) {
+                })()`)
+                await new Promise(r => setTimeout(r, 3000))
+
+                // Attempt to click "Continue" button with multiple strategies
+                let continueClicked = false
+
+                // Strategy 1: XPath via document.evaluate
+                const xpaths = [
+                  '//button[contains(., "Continue")]',
+                  '//button[contains(., "continue")]',
+                  '//*[self::button or self::a or @role="button"][contains(., "Continue")]',
+                  '//*[self::button or self::a or @role="button"][contains(., "continue")]',
+                  '//div[contains(@class, "continue") or contains(@class, "Continue")]',
+                  '//input[@type="submit"]',
+                ]
+                for (const xp of xpaths) {
+                  const found = await page.evaluate(`(function() {
+                    const xpath = ${JSON.stringify(xp)};
+                    const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                    const el = result.singleNodeValue;
+                    if (!el) return false;
+                    const r = el.getBoundingClientRect();
+                    if (r.width === 0 || r.height === 0) return false;
+                    el.scrollIntoView({ block: 'center' });
+                    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                    return true;
+                  })()`)
+                  if (found) {
+                    continueClicked = true
+                    log('info', 'meta_api', 'fb_login: clicked Continue via XPath', { xpath: xp })
+                    break
+                  }
+                }
+
+                // Strategy 2: text search via evaluate if XPath failed
+                if (!continueClicked) {
+                  log('info', 'meta_api', 'fb_login: XPath failed, trying evaluate + MouseEvent')
+                  const found = await page.evaluate(`(function() {
+                    const keywords = ['continue', 'next', 'send', 'confirm', 'ok'];
+                    const all = document.querySelectorAll('button, [role="button"], a[role="button"], input[type="submit"]');
+                    for (const el of all) {
+                      const text = (el.textContent || el.value || '').trim().toLowerCase();
+                      if (keywords.some(k => text === k || text.startsWith(k + ' ') || text.includes(k))) {
                         el.scrollIntoView({ block: 'center' });
                         el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
                         return true;
                       }
                     }
+                    return false;
+                  })()`)
+                  if (found) {
+                    continueClicked = true
+                    log('info', 'meta_api', 'fb_login: clicked Continue via evaluate')
                   }
-                  return false;
-                })()`)
-                if (clicked) {
-                  log('info', 'meta_api', 'fb_login: clicked continue via MouseEvent')
-                } else {
-                  log('info', 'meta_api', 'fb_login: pressing Enter as fallback')
+                }
+
+                // Strategy 3: Enter key
+                if (!continueClicked) {
+                  log('info', 'meta_api', 'fb_login: pressing Enter as last resort')
                   await page.keyboard.press('Enter')
                   await new Promise(r => setTimeout(r, 2000))
                 }
