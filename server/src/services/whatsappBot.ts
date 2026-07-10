@@ -1671,10 +1671,13 @@ ${baseUrl}/fb-setup`,
     const cookiesPath = path.resolve(process.cwd(), 'fb_cookies.txt')
     if (fs.existsSync(cookiesPath)) args.push('--cookies', cookiesPath)
 
+    const venvPython = path.resolve(process.cwd(), 'venv', 'bin', 'python3')
+    const pythonBin = fs.existsSync(venvPython) ? venvPython : 'python3'
+
     await sock.sendMessage(sender, { text: '🔄 Posting to Facebook wall via browser...' })
 
     const stdout = await new Promise<string>((resolve, reject) => {
-      execFile('xvfb-run', ['python3', scriptPath, ...args], { timeout: 60000 }, (err, stdout, stderr) => {
+      execFile('xvfb-run', [pythonBin, scriptPath, ...args], { timeout: 60000 }, (err, stdout, stderr) => {
         if (err) reject(new Error(stderr || err.message))
         else resolve(stdout)
       })
