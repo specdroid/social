@@ -104,6 +104,19 @@ def main():
         driver.get(FB_URL)
         time.sleep(5)
 
+        # Dismiss "Continue as [name]" dialog
+        for selector in [
+            "//span[text()='Continue']/..",
+            "//div[@role='button' and contains(text(),'Continue')]",
+            "//span[contains(text(),'Continue')]/..",
+            "//a[contains(text(),'Continue')]",
+        ]:
+            els = driver.find_elements(By.XPATH, selector)
+            if els:
+                driver.execute_script('arguments[0].click();', els[0])
+                time.sleep(3)
+                break
+
         # Check if logged in (instant find_elements, no slow wait.until)
         logged_in = False
         for selector in [
