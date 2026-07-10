@@ -219,11 +219,13 @@ export async function facebookLogin(email: string, password: string, requestCode
                   break
                 }
               }
-              // Wait a few seconds for page to react, then loop will pick up any navigation
               await new Promise(r => setTimeout(r, 5000))
+              await requestCode.screenshot(page, '📸 After clicking the button')
             } else {
               // Default: try consent buttons
               const confirmToken = await waitForConsent(page)
+              await new Promise(r => setTimeout(r, 5000))
+              await requestCode.screenshot(page, '📸 After clicking Continue')
               if (confirmToken) { shortLivedToken = confirmToken; break }
               if (!is2FA(page.url())) break
             }
