@@ -16,7 +16,7 @@ import { log } from '../utils/logger'
 import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
 import { publishPost } from './metaGraph'
-import { facebookLogin } from './facebookLogin'
+import { facebookLogin, type RequestCodeHelper } from './facebookLogin'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -1582,26 +1582,35 @@ _Example:_ ws test welcome bot: hello
     await sock.sendMessage(sender, { text: '🔄 Logging into Facebook with browser automation... This may take up to 60 seconds.' })
     try {
       const normSender = normalizeJid(actualSender)
-      const result = await facebookLogin(fbEmail, fbPassword, async (page, url) => {
-        if (url.includes('flow=two_factor_login')) {
-          await sock.sendMessage(sender, { text: '📱 *Check your phone.* Facebook sent a login confirmation notification. Tap "Yes, that was me" on your phone, then reply "done" here.' })
+      const codeHelper: RequestCodeHelper = {
+        get: async (page, url) => {
+          if (url.includes('flow=two_factor_login')) {
+            await sock.sendMessage(sender, { text: '📱 *Check your phone.* Facebook sent a login confirmation notification. Tap "Yes, that was me" on your phone, then reply "done" here.' })
+            return new Promise<string>((resolve, reject) => {
+              const timeout = setTimeout(() => {
+                pending2FA.delete(normSender)
+                reject(new Error('⏰ Phone confirmation timed out (2 minutes). Run `ws fb login` again.'))
+              }, 120000)
+              pending2FA.set(normSender, { state: 'confirm', page, sender, resolve, reject, timeout })
+            })
+          }
+          await sock.sendMessage(sender, { text: '📱 *2FA code required.* Send the 6-digit code from your authenticator app here.' })
           return new Promise<string>((resolve, reject) => {
             const timeout = setTimeout(() => {
               pending2FA.delete(normSender)
-              reject(new Error('⏰ Phone confirmation timed out (2 minutes). Run `ws fb login` again.'))
+              reject(new Error('⏰ 2FA code timed out (2 minutes). Run `ws fb login` again.'))
             }, 120000)
-            pending2FA.set(normSender, { state: 'confirm', page, sender, resolve, reject, timeout })
+            pending2FA.set(normSender, { state: 'code', page, sender, resolve, reject, timeout })
           })
-        }
-        await sock.sendMessage(sender, { text: '📱 *2FA code required.* Send the 6-digit code from your authenticator app here.' })
-        return new Promise<string>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            pending2FA.delete(normSender)
-            reject(new Error('⏰ 2FA code timed out (2 minutes). Run `ws fb login` again.'))
-          }, 120000)
-          pending2FA.set(normSender, { state: 'code', page, sender, resolve, reject, timeout })
-        })
-      })
+        },
+        screenshot: async (page, caption) => {
+          try {
+            const buf = await page.screenshot({ encoding: 'base64' })
+            await sock.sendMessage(sender, { image: Buffer.from(buf, 'base64'), caption })
+          } catch {}
+        },
+      }
+      const result = await facebookLogin(fbEmail, fbPassword, codeHelper)
       if (!result.success) {
         await sock.sendMessage(sender, { text: `❌ ${result.error}` })
         return true

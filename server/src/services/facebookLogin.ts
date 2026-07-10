@@ -15,6 +15,11 @@ interface LoginResult {
   error?: string
 }
 
+export interface RequestCodeHelper {
+  get: (page: Page, currentUrl: string) => Promise<string>
+  screenshot: (page: Page, caption: string) => Promise<void>
+}
+
 function findChrome(): string | undefined {
   const candidates = [
     process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -102,7 +107,7 @@ function is2FAConfirmPage(url: string): boolean {
   return url.includes('two_step_verification/two_factor/') && url.includes('flow=two_factor_login')
 }
 
-export async function facebookLogin(email: string, password: string, requestCode?: (page: Page, currentUrl: string) => Promise<string>): Promise<LoginResult> {
+export async function facebookLogin(email: string, password: string, requestCode?: RequestCodeHelper): Promise<LoginResult> {
   const appId = env.META_APP_ID
   const appSecret = env.META_APP_SECRET
 
@@ -200,7 +205,7 @@ export async function facebookLogin(email: string, password: string, requestCode
               return { success: false, error: 'Facebook sent a login confirmation to your phone. Approve it and retry.' }
             }
             log('info', 'meta_api', 'fb_login: asking user to confirm on phone')
-            const instruction = await requestCode(page, currentUrl) // user's instruction after screenshot
+            const instruction = await requestCode.get(page, currentUrl) // user's instruction after screenshot
             await new Promise(r => setTimeout(r, 3000))
 
             // Follow user instruction from the screenshot
@@ -215,10 +220,14 @@ export async function facebookLogin(email: string, password: string, requestCode
                   break
                 }
               }
+              // Send screenshot so user can verify if the page changed
+              await requestCode.screenshot(page, '📸 After clicking "Try another way" — did it work?')
               // Continue loop; next iteration will detect the code page if navigated
             } else {
               // Default: try consent buttons
               const confirmToken = await waitForConsent(page)
+              // Send screenshot after consent attempt
+              await requestCode.screenshot(page, '📸 After "waitForConsent" button click — what do you see?')
               if (confirmToken) { shortLivedToken = confirmToken; break }
               if (!is2FA(page.url())) break
             }
@@ -228,7 +237,7 @@ export async function facebookLogin(email: string, password: string, requestCode
               return { success: false, error: 'Two-factor authentication code required.' }
             }
             log('info', 'meta_api', 'fb_login: requesting 2FA code')
-            const code = await requestCode(page, currentUrl)
+            const code = await requestCode.get(page, currentUrl)
             log('info', 'meta_api', 'fb_login: code received, entering it')
             const ok = await enter2FACode(page, code)
             if (!ok) {
