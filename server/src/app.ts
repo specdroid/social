@@ -50,13 +50,13 @@ export function createApp(): express.Application {
         },
         {
           command: 'fb: <content>',
-          description: 'Post a message to your Facebook wall (via browser automation).',
-          example: 'fb: Hello Facebook!',
+          description: 'Post a message to your connected Facebook Page (via Graph API).',
+          example: 'fb: Hello Page!',
         },
         {
-          command: 'fb page: <content>',
-          description: 'Post a message to your connected Facebook Page (via Graph API).',
-          example: 'fb page: Hello Page!',
+          command: 'ws fb post: <content>',
+          description: 'Post a message to your Facebook wall (via browser automation).',
+          example: 'ws fb post: Hello Facebook!',
         },
         {
           command: 'ws fb login',

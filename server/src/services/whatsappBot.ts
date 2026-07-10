@@ -1238,12 +1238,12 @@ async function processCommands(
         text: `📋 *Available Commands*
 
 🔹 *fb: content*
-Post to your Facebook wall (browser)
-_Example:_ fb: Hello Facebook!
+Post to your Facebook Page (API)
+_Example:_ fb: Hello Page!
 
-🔹 *fb page: content*
-Post to a connected Facebook Page (API)
-_Example:_ fb page: Hello Page!
+🔹 *ws fb post: content*
+Post to your Facebook wall (browser)
+_Example:_ ws fb post: Hello Facebook!
 
 🔹 *ws fb login*
 Get the link to upload Facebook cookies
@@ -1593,10 +1593,10 @@ ${baseUrl}/facebook`,
     return true
   }
 
-  // ── fb page: content / fb page : content ── post to Facebook Page via Graph API ──
-  const fbPageMatch = textContent.match(/^fb\s+page\s*:\s*(.*)/is)
-  if (fbPageMatch) {
-    const fbContent = fbPageMatch[1]
+  // ── fb: content / fb : content ── post to Facebook Page via Graph API ──
+  const fbPrefix = textContent.match(/^fb\s*:\s*(.*)/is)
+  if (fbPrefix) {
+    const fbContent = fbPrefix[1]
     const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
     if (!fbContent && !hasMedia) return true
 
@@ -1643,59 +1643,61 @@ ${baseUrl}/facebook`,
     return true
   }
 
-  // ── fb: content / fb : content ── post to Facebook wall via Selenium ──
-  const fbPrefix = textContent.match(/^fb\s*:\s*(.*)/is)
-  if (!fbPrefix) return false
-  const fbContent = fbPrefix[1]
-  const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
-  if (!fbContent && !hasMedia) return true
+  // ── ws fb post: content / ws fb post : content ── post to Facebook wall via Selenium ──
+  const wallPrefix = textContent.match(/^ws\s+fb\s+post\s*:\s*(.*)/is)
+  if (wallPrefix) {
+    const wallContent = wallPrefix[1]
+    const wallHasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
+    if (!wallContent && !wallHasMedia) return true
 
-  try {
-    const imageMsg = message.message?.imageMessage
-    let content = fbContent
-    let imagePath: string | null = null
+    try {
+      const imageMsg = message.message?.imageMessage
+      let content = wallContent
+      let imagePath: string | null = null
 
-    if (imageMsg) {
-      const buffer = await downloadMediaMessage(message, 'buffer', {})
-      const fileName = `fb_${Date.now()}.jpg`
-      const filePath = path.resolve(process.cwd(), 'uploads', fileName)
-      fs.writeFileSync(filePath, buffer as Buffer)
-      imagePath = filePath
-      content = imageMsg.caption || fbContent || ''
-    }
+      if (imageMsg) {
+        const buffer = await downloadMediaMessage(message, 'buffer', {})
+        const fileName = `fb_${Date.now()}.jpg`
+        const filePath = path.resolve(process.cwd(), 'uploads', fileName)
+        fs.writeFileSync(filePath, buffer as Buffer)
+        imagePath = filePath
+        content = imageMsg.caption || wallContent || ''
+      }
 
-    const scriptPath = path.resolve(process.cwd(), 'scripts', 'fb_post_to_wall.py')
-    const args = ['--content', content]
-    if (imagePath) args.push('--image', imagePath)
+      const scriptPath = path.resolve(process.cwd(), 'scripts', 'fb_post_to_wall.py')
+      const args = ['--content', content]
+      if (imagePath) args.push('--image', imagePath)
 
-    const cookiesPath = path.resolve(process.cwd(), 'fb_cookies.txt')
-    if (fs.existsSync(cookiesPath)) args.push('--cookies', cookiesPath)
+      const cookiesPath = path.resolve(process.cwd(), 'fb_cookies.txt')
+      if (fs.existsSync(cookiesPath)) args.push('--cookies', cookiesPath)
 
-    const venvPython = path.resolve(process.cwd(), 'venv', 'bin', 'python3')
-    const pythonBin = fs.existsSync(venvPython) ? venvPython : 'python3'
+      const venvPython = path.resolve(process.cwd(), 'venv', 'bin', 'python3')
+      const pythonBin = fs.existsSync(venvPython) ? venvPython : 'python3'
 
-    await sock.sendMessage(sender, { text: '🔄 Posting to Facebook wall via browser...' })
+      await sock.sendMessage(sender, { text: '🔄 Posting to Facebook wall via browser...' })
 
-    const stdout = await new Promise<string>((resolve, reject) => {
-      execFile('xvfb-run', [pythonBin, scriptPath, ...args], { timeout: 60000 }, (err, stdout, stderr) => {
-        if (err) reject(new Error(stderr || err.message))
-        else resolve(stdout)
+      const stdout = await new Promise<string>((resolve, reject) => {
+        execFile('xvfb-run', [pythonBin, scriptPath, ...args], { timeout: 60000 }, (err, stdout, stderr) => {
+          if (err) reject(new Error(stderr || err.message))
+          else resolve(stdout)
+        })
       })
-    })
 
-    const result = JSON.parse(stdout)
-    if (result.success) {
-      await sock.sendMessage(sender, { text: `✅ Posted to Facebook wall\n${content.slice(0, 200)}` })
-      log('info', 'whatsapp', 'facebook_wall: post sent')
-    } else {
-      await sock.sendMessage(sender, { text: `❌ Wall post failed: ${result.error}` })
-      log('error', 'whatsapp', 'facebook_wall: post failed', { error: result.error })
+      const result = JSON.parse(stdout)
+      if (result.success) {
+        await sock.sendMessage(sender, { text: `✅ Posted to Facebook wall\n${content.slice(0, 200)}` })
+        log('info', 'whatsapp', 'facebook_wall: post sent')
+      } else {
+        await sock.sendMessage(sender, { text: `❌ Wall post failed: ${result.error}` })
+        log('error', 'whatsapp', 'facebook_wall: post failed', { error: result.error })
+      }
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ Wall post failed: ${(err as Error).message}` })
+      log('error', 'whatsapp', 'facebook_wall: post error', { error: (err as Error).message })
     }
-  } catch (err) {
-    await sock.sendMessage(sender, { text: `❌ Wall post failed: ${(err as Error).message}` })
-    log('error', 'whatsapp', 'facebook_wall: post error', { error: (err as Error).message })
+    return true
   }
-  return true
+  return false
 }
 
 async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promise<void> {
