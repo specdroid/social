@@ -1,5 +1,7 @@
 export interface LoginResult {
   success: boolean
-  pages?: Array<{ pageId: string; pageName: string; accessToken: string }>
+  accessToken?: string
+  fbUserId?: string
+  fbUserName?: string
   error?: string
 }

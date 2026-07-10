@@ -17,7 +17,7 @@ export function generateOAuthUrl(state: string): string {
   const redirectUri = env.META_REDIRECT_URI
   if (!appId) throw new Error('META_APP_ID not set in .env')
   if (!redirectUri) throw new Error('META_REDIRECT_URI not set in .env')
-  const scope = 'pages_manage_posts,pages_read_engagement,pages_show_list'
+  const scope = 'publish_posts,user_posts'
   return `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}&auth_type=rerequest`
 }
 
@@ -59,21 +59,15 @@ export async function exchangeCodeForToken(code: string): Promise<LoginResult> {
     return { success: false, error: `Token exchange failed: ${JSON.stringify(exchangeResult)}` }
   }
 
-  // Fetch pages list
-  log('info', 'meta_api', 'fb: fetching pages list')
-  const pagesResult = await graphPost('/me/accounts', { access_token: longLivedToken })
+  // Fetch user info
+  log('info', 'meta_api', 'fb: fetching user info')
+  const meResult = await graphPost('/me', { access_token: longLivedToken, fields: 'id,name' })
 
-  if (!pagesResult.data || pagesResult.data.length === 0) {
-    log('error', 'meta_api', 'fb: no pages found', { response: pagesResult })
-    return { success: false, error: 'No Facebook pages found for this account' }
+  if (!meResult.id) {
+    log('error', 'meta_api', 'fb: failed to fetch user info', { response: meResult })
+    return { success: false, error: `Failed to fetch user info: ${JSON.stringify(meResult)}` }
   }
 
-  const pages = pagesResult.data.map((p: any) => ({
-    pageId: p.id,
-    pageName: p.name || '',
-    accessToken: p.access_token,
-  }))
-
-  log('info', 'meta_api', 'fb: token exchange complete', { pageCount: pages.length })
-  return { success: true, pages }
+  log('info', 'meta_api', 'fb: login successful', { fbUserId: meResult.id, fbName: meResult.name })
+  return { success: true, accessToken: longLivedToken, fbUserId: meResult.id, fbUserName: meResult.name || '' }
 }

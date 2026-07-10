@@ -15,7 +15,7 @@ import { SocksProxyAgent } from 'socks-proxy-agent'
 import { log } from '../utils/logger'
 import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
-import { publishPost } from './metaGraph'
+import { publishPost, publishToFeed } from './metaGraph'
 import { generateOAuthUrl } from '../facebook'
 
 const prisma = new PrismaClient()
@@ -1238,7 +1238,7 @@ async function processCommands(
         text: `📋 *Available Commands*
 
 🔹 *fb: content*
-Post to your Facebook page
+Post to your Facebook feed
 _Example:_ fb: Hello Facebook!
 
 🔹 *-help*
@@ -1595,17 +1595,17 @@ After you authorize, the token will be saved automatically and you'll get a conf
     return true
   }
 
-  // ── fb: content / fb : content ── post to Facebook page ──
+  // ── fb: content / fb : content ── post to Facebook feed ──
   const fbPrefix = textContent.match(/^fb\s*:\s*(.*)/is)
   if (!fbPrefix) return false
   const fbContent = fbPrefix[1]
   const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
   if (!fbContent && !hasMedia) return true
 
-  const fbPage = await prisma.facebookPage.findFirst()
-  if (!fbPage) {
-    await sock.sendMessage(sender, { text: '❌ No Facebook page connected' })
-    log('warn', 'whatsapp', 'facebook_feed: no Facebook page connected')
+  const fbAccount = await prisma.facebookAccount.findFirst()
+  if (!fbAccount) {
+    await sock.sendMessage(sender, { text: '❌ No Facebook account connected. Use `ws fb login` first.' })
+    log('warn', 'whatsapp', 'facebook_feed: no Facebook account connected')
     return true
   }
 
@@ -1621,25 +1621,25 @@ After you authorize, the token will be saved automatically and you'll get a conf
       fs.writeFileSync(filePath, buffer as Buffer)
       content = imageMsg.caption || fbContent || ''
       mediaUrls = [`${env.FRONTEND_URL.replace(/\/$/, '')}/uploads/${fileName}`]
-      await publishPost(fbPage.pageId, content, mediaUrls, fbPage.accessToken)
+      await publishToFeed(content, mediaUrls, fbAccount.accessToken)
     } else {
       const docMsg = message.message?.documentMessage
       if (docMsg) {
         content = `${docMsg.caption || fbContent}\n\n${docMsg.fileName || 'document'}`
-        await publishPost(fbPage.pageId, content, null, fbPage.accessToken)
+        await publishToFeed(content, null, fbAccount.accessToken)
       } else {
-        await publishPost(fbPage.pageId, content, null, fbPage.accessToken)
+        await publishToFeed(content, null, fbAccount.accessToken)
       }
     }
 
     await prisma.facebookPostLog.create({
-      data: { userId: fbPage.userId, pageId: fbPage.pageId, content, mediaUrls: mediaUrls ? JSON.stringify(mediaUrls) : null, status: 'success' },
+      data: { userId: fbAccount.userId, content, mediaUrls: mediaUrls ? JSON.stringify(mediaUrls) : null, status: 'success' },
     })
-    await sock.sendMessage(sender, { text: `✅ Posted to ${fbPage.pageName || fbPage.pageId}\n${content.slice(0, 200)}` })
-    log('info', 'whatsapp', 'facebook_feed: post sent', { pageId: fbPage.pageId })
+    await sock.sendMessage(sender, { text: `✅ Posted to Facebook feed\n${content.slice(0, 200)}` })
+    log('info', 'whatsapp', 'facebook_feed: post sent')
   } catch (err) {
     await prisma.facebookPostLog.create({
-      data: { userId: fbPage.userId, pageId: fbPage.pageId, content: fbContent || '', status: 'failed', error: (err as Error).message },
+      data: { userId: fbAccount.userId, content: fbContent || '', status: 'failed', error: (err as Error).message },
     })
     await sock.sendMessage(sender, { text: `❌ Post failed: ${(err as Error).message}` })
     log('error', 'whatsapp', 'facebook_feed: post failed', { error: (err as Error).message })

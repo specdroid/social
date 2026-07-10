@@ -1,6 +1,6 @@
 import cron from 'node-cron'
 import { PrismaClient } from '@prisma/client'
-import { publishPost } from './metaGraph'
+import { publishToFeed } from './metaGraph'
 import { log } from '../utils/logger'
 
 const prisma = new PrismaClient()
@@ -19,6 +19,7 @@ export function startContentScheduler(): void {
           user: {
             include: {
               facebookPages: true,
+              facebookAccounts: true,
               instagramAccounts: true,
             },
           },
@@ -30,9 +31,9 @@ export function startContentScheduler(): void {
           const mediaUrls = post.mediaUrls ? JSON.parse(post.mediaUrls) : null
 
           if (post.platform === 'facebook' || post.platform === 'both') {
-            const fbPage = post.user.facebookPages[0]
-            if (fbPage?.accessToken) {
-              await publishPost(fbPage.pageId, post.content, mediaUrls, fbPage.accessToken)
+            const fbAccount = post.user.facebookAccounts[0]
+            if (fbAccount?.accessToken) {
+              await publishToFeed(post.content, mediaUrls, fbAccount.accessToken)
             }
           }
 

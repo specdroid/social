@@ -24,32 +24,29 @@ router.get('/callback', async (req: Request, res: Response) => {
   log('info', 'meta_api', 'fb: OAuth callback received', { sender })
 
   try {
-    const result = await exchangeCodeForToken(code)
-    if (!result.success) {
-      await sendWhatsAppMessage(sender, `❌ Facebook login failed: ${result.error}`)
-      res.send(`<h1>Login Failed</h1><p>${result.error}</p>`)
-      return
-    }
+      const result = await exchangeCodeForToken(code)
+      if (!result.success) {
+        await sendWhatsAppMessage(sender, `❌ Facebook login failed: ${result.error}`)
+        res.send(`<h1>Login Failed</h1><p>${result.error}</p>`)
+        return
+      }
 
-    const user = await prisma.user.findFirst()
-    if (!user) {
-      await sendWhatsAppMessage(sender, '❌ No user found in database.')
-      res.send('<h1>Login Failed</h1><p>No user found in database.</p>')
-      return
-    }
+      const user = await prisma.user.findFirst()
+      if (!user) {
+        await sendWhatsAppMessage(sender, '❌ No user found in database.')
+        res.send('<h1>Login Failed</h1><p>No user found in database.</p>')
+        return
+      }
 
-    for (const page of result.pages!) {
-      await prisma.facebookPage.upsert({
-        where: { pageId: page.pageId },
-        update: { accessToken: page.accessToken, pageName: page.pageName, userId: user.id },
-        create: { pageId: page.pageId, pageName: page.pageName, accessToken: page.accessToken, userId: user.id },
+      await prisma.facebookAccount.upsert({
+        where: { fbId: result.fbUserId! },
+        update: { accessToken: result.accessToken!, fbName: result.fbUserName, userId: user.id },
+        create: { fbId: result.fbUserId!, fbName: result.fbUserName, accessToken: result.accessToken!, userId: user.id },
       })
-    }
 
-    const lines = result.pages!.map(p => `✅ *${p.pageName}* (${p.pageId})`)
-    await sendWhatsAppMessage(sender, `✅ Facebook login successful! Saved ${result.pages!.length} page(s):\n\n${lines.join('\n')}`)
+      await sendWhatsAppMessage(sender, `✅ Facebook login successful! Connected as *${result.fbUserName || result.fbUserId}*`)
 
-    res.send(`<h1>Login Successful</h1><p>You can close this tab. Check WhatsApp for confirmation.</p>`)
+      res.send(`<h1>Login Successful</h1><p>You can close this tab. Check WhatsApp for confirmation.</p>`)
   } catch (err) {
     const msg = (err as Error).message
     log('error', 'meta_api', 'fb: OAuth callback error', { error: msg })

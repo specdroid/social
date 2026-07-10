@@ -118,4 +118,18 @@ export async function publishPost(
   return graphRequest(`/${pageId}/feed`, { method: 'POST', body, accessToken })
 }
 
+export async function publishToFeed(
+  content: string,
+  mediaUrls: string[] | null,
+  accessToken: string
+): Promise<unknown> {
+  if (mediaUrls && mediaUrls.length > 0) {
+    const body = new URLSearchParams({ url: mediaUrls[0], caption: content, access_token: accessToken })
+    return graphRequest('/me/photos', { method: 'POST', body, accessToken })
+  }
+
+  const body = new URLSearchParams({ message: content, access_token: accessToken })
+  return graphRequest('/me/feed', { method: 'POST', body, accessToken })
+}
+
 

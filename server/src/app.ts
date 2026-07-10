@@ -49,7 +49,7 @@ export function createApp(): express.Application {
         },
         {
           command: 'fb: <content>',
-          description: 'Post a message to your connected Facebook page.',
+          description: 'Post a message to your Facebook feed/wall.',
           example: 'fb: Hello Facebook!',
         },
         {
