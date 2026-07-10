@@ -1560,16 +1560,17 @@ _Example:_ ws test welcome bot: hello
 
   // ── ws fb login email password ── automatic Facebook login ──
   if (/^ws fb login\s+(-h|--help|-H)$/i.test(textContent.trim())) {
-    await sock.sendMessage(sender, { text: `📋 *ws fb login <email> <password>*\n\nAutomatically log into Facebook, obtain Page Access Tokens, and save them. Requires META_APP_ID and META_APP_SECRET in .env.\n\n_Example:_ ws fb login user@example.com mypassword` })
+    await sock.sendMessage(sender, { text: `📋 *ws fb login <email> <password> [code]*\n\nAutomatically log into Facebook, obtain Page Access Tokens, and save them. Requires META_APP_ID and META_APP_SECRET in .env. Include a 2FA code (from authenticator app or recovery code) if 2FA is enabled.\n\n_Example:_ ws fb login user@example.com mypassword\n_Example (2FA):_ ws fb login user@example.com mypassword 123456` })
     return true
   }
-  const fbLoginMatch = textContent.match(/^ws fb login\s+(\S+)\s+(\S+)$/is)
+  const fbLoginMatch = textContent.match(/^ws fb login\s+(\S+)\s+(\S+)(?:\s+(\S+))?$/is)
   if (fbLoginMatch) {
     const fbEmail = fbLoginMatch[1].trim()
     const fbPassword = fbLoginMatch[2].trim()
+    const fbCode = fbLoginMatch[3]?.trim()
     await sock.sendMessage(sender, { text: '🔄 Logging into Facebook with browser automation... This may take up to 60 seconds.' })
     try {
-      const result = await facebookLogin(fbEmail, fbPassword)
+      const result = await facebookLogin(fbEmail, fbPassword, fbCode)
       if (!result.success) {
         await sock.sendMessage(sender, { text: `❌ ${result.error}` })
         return true

@@ -74,7 +74,7 @@ async function waitForConsent(page: Page): Promise<string> {
   return ''
 }
 
-export async function facebookLogin(email: string, password: string): Promise<LoginResult> {
+export async function facebookLogin(email: string, password: string, code?: string): Promise<LoginResult> {
   const appId = env.META_APP_ID
   const appSecret = env.META_APP_SECRET
 
@@ -162,7 +162,28 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
       log('info', 'meta_api', 'fb_login: after submit', { url: urlAfterSubmit, title: await page.title() })
 
       if (urlAfterSubmit.includes('two_step_verification')) {
-        return { success: false, error: 'Two-factor authentication (2FA) is enabled. Disable it or use an app password.' }
+        if (!code) {
+          return { success: false, error: 'Two-factor authentication (2FA) is enabled. Provide a code: ws fb login <email> <password> <code>' }
+        }
+        log('info', 'meta_api', 'fb_login: detected 2FA page, entering code')
+        const codeInput = await page.waitForSelector('input[type="text"], input[type="tel"], input[autocomplete="one-time-code"]', { timeout: 5000 }).catch(() => null) ||
+          await page.waitForSelector('#approvals_code', { timeout: 3000 }).catch(() => null)
+        if (codeInput) {
+          await codeInput.type(code, { delay: 20 })
+          await new Promise(r => setTimeout(r, 300))
+          await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {}),
+            page.keyboard.press('Enter'),
+          ])
+          await new Promise(r => setTimeout(r, 3000))
+          const urlAfter2fa = page.url()
+          log('info', 'meta_api', 'fb_login: after 2FA submit', { url: urlAfter2fa })
+          if (urlAfter2fa.includes('two_step_verification')) {
+            return { success: false, error: 'Invalid 2FA code. Check your authenticator app or recovery codes.' }
+          }
+        } else {
+          return { success: false, error: 'Could not find 2FA code input field.' }
+        }
       }
 
       // Check for token after login
@@ -176,7 +197,7 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
     }
 
     if (!shortLivedToken && page.url().includes('two_step_verification')) {
-      return { success: false, error: 'Two-factor authentication (2FA) is enabled. Disable it or use an app password.' }
+      return { success: false, error: code ? 'Invalid 2FA code.' : 'Two-factor authentication (2FA) is enabled. Provide a code: ws fb login <email> <password> <code>' }
     }
 
     if (!shortLivedToken) {
@@ -189,7 +210,7 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
       const finalHash = await page.evaluate('window.location.hash').catch(() => '') as string
       log('warn', 'meta_api', 'fb_login: failed to obtain token', { url: finalUrl, hash: finalHash, title: await page.title() })
       if (finalUrl.includes('two_step_verification')) {
-        return { success: false, error: 'Two-factor authentication (2FA) is enabled. Disable it or use an app password.' }
+        return { success: false, error: code ? 'Invalid 2FA code.' : 'Two-factor authentication (2FA) is enabled. Provide a code: ws fb login <email> <password> <code>' }
       }
       return { success: false, error: `Could not obtain access token.` }
     }
