@@ -101,9 +101,9 @@ def main():
             load_cookies(driver, args.cookies)
 
         driver.get(FB_URL)
-        wait = WebDriverWait(driver, 20)
+        time.sleep(5)
 
-        # Check if logged in
+        # Check if logged in (instant find_elements, no slow wait.until)
         logged_in = False
         for selector in [
             "//span[contains(text(),\"What's on your mind\")]",
@@ -111,12 +111,11 @@ def main():
             "//div[@role='textbox' and contains(@aria-label,\"What's on your mind?\")]",
             "//*[@aria-label='Create a post']",
         ]:
-            try:
-                wait.until(EC.presence_of_element_located((By.XPATH, selector)))
+            if driver.find_elements(By.XPATH, selector):
                 logged_in = True
                 break
-            except TimeoutException:
-                continue
+
+        wait = WebDriverWait(driver, 20)
 
         if not logged_in:
             page_title = driver.title.lower()
