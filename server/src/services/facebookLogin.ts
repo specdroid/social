@@ -224,44 +224,41 @@ export async function facebookLogin(email: string, password: string, requestCode
               const radios = await page.$$('input[type="radio"], [role="radio"]').catch(() => [] as any[])
               if (radios.length > 0) {
                 log('info', 'meta_api', `fb_login: found ${radios.length} radio options, selecting the last one`)
-                await page.evaluate((el) => el.click(), radios[radios.length - 1]).catch(() => {})
+                // Click radio via proper MouseEvent dispatch (React may ignore .click())
+                await page.evaluate(`(function() {
+                  const radios = document.querySelectorAll('input[type="radio"], [role="radio"]');
+                  const last = radios[radios.length - 1];
+                  if (last) {
+                    last.scrollIntoView({ block: 'center' });
+                    last.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                  }
+                })()`)
                 await new Promise(r => setTimeout(r, 3000))
 
-                // Try clicking Continue button via CSS selectors
-                const allContBtns = await page.$$('button, [role="button"], a[role="button"], div[role="button"], input[type="submit"], span[role="button"]')
-                let clicked = false
-                for (const cb of allContBtns) {
-                  const t2 = await page.evaluate((el) => (el.textContent || '').trim().toLowerCase(), cb).catch(() => '')
-                  log('info', 'meta_api', 'fb_login: continue button check', { text: t2.slice(0, 60) })
-                  if (t2.includes('continue') || t2.includes('next') || t2.includes('send')) {
-                    await page.evaluate((el) => el.click(), cb).catch(() => {})
-                    clicked = true
-                    log('info', 'meta_api', 'fb_login: clicked continue button')
-                    break
+                // Try clicking the confirm button using scrollIntoView + MouseEvent
+                const clicked = await page.evaluate(`(function() {
+                  const keywords = ['continue', 'next', 'send', 'confirm', 'ok'];
+                  // Search all elements by text
+                  const all = document.querySelectorAll('*');
+                  for (const el of all) {
+                    const text = (el.textContent || '').trim().toLowerCase();
+                    if (keywords.some(k => text === k || text.startsWith(k + ' ') || text.includes(k))) {
+                      const rect = el.getBoundingClientRect();
+                      if (rect.width > 0 && rect.height > 0 && 'click' in el) {
+                        el.scrollIntoView({ block: 'center' });
+                        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                        return true;
+                      }
+                    }
                   }
-                }
-
-                // Fallback: press Enter to submit (the Continue button might be form-based)
-                if (!clicked) {
+                  return false;
+                })()`)
+                if (clicked) {
+                  log('info', 'meta_api', 'fb_login: clicked continue via MouseEvent')
+                } else {
                   log('info', 'meta_api', 'fb_login: pressing Enter as fallback')
                   await page.keyboard.press('Enter')
                   await new Promise(r => setTimeout(r, 2000))
-                  // Try JS fallback for any visible element with matching text
-                  log('info', 'meta_api', 'fb_login: trying JS fallback to find confirm button')
-                  await page.evaluate(`(function() {
-                    const keywords = ['continue', 'next', 'send', 'confirm', 'ok'];
-                    const all = document.querySelectorAll('*');
-                    for (const el of all) {
-                      const text = (el.textContent || '').trim().toLowerCase();
-                      if (keywords.some(k => text === k || text.startsWith(k + ' ') || text.includes(k))) {
-                        const rect = el.getBoundingClientRect();
-                        if (rect.width > 0 && rect.height > 0 && 'click' in el) {
-                          el.click();
-                          break;
-                        }
-                      }
-                    }
-                  })()`)
                 }
                 await new Promise(r => setTimeout(r, 5000))
               }
