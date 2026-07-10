@@ -195,7 +195,6 @@ export async function facebookLogin(email: string, password: string, requestCode
       log('info', 'meta_api', 'fb_login: after submit', { url: urlAfterSubmit, title: await page.title() })
 
       if (is2FA(urlAfterSubmit)) {
-        // Handle 2FA — max 3 retries as requested
         for (let attempt = 0; attempt < 3 && is2FA(page.url()); attempt++) {
           const currentUrl = page.url()
           log('info', 'meta_api', `fb_login: 2FA attempt ${attempt}`, { url: currentUrl })
@@ -205,10 +204,10 @@ export async function facebookLogin(email: string, password: string, requestCode
               return { success: false, error: 'Facebook sent a login confirmation to your phone. Approve it and retry.' }
             }
             log('info', 'meta_api', 'fb_login: asking user to confirm on phone')
-            const instruction = await requestCode.get(page, currentUrl) // user's instruction after screenshot
+            const instruction = await requestCode.get(page, currentUrl)
             await new Promise(r => setTimeout(r, 3000))
 
-            // Follow user instruction from the screenshot
+            // Follow user instruction
             if (/try\s*(another|different)\s*way/.test(instruction.toLowerCase())) {
               log('info', 'meta_api', 'fb_login: clicking "Try another way"')
               const btns = await page.$$('button, [role="button"], a[role="button"], div[role="button"]')
@@ -219,15 +218,22 @@ export async function facebookLogin(email: string, password: string, requestCode
                   break
                 }
               }
-              await new Promise(r => setTimeout(r, 5000))
-              await requestCode.screenshot(page, '📸 After clicking the button')
             } else {
-              // Default: try consent buttons
-              const confirmToken = await waitForConsent(page)
-              await new Promise(r => setTimeout(r, 5000))
-              await requestCode.screenshot(page, '📸 After clicking Continue')
-              if (confirmToken) { shortLivedToken = confirmToken; break }
-              if (!is2FA(page.url())) break
+              log('info', 'meta_api', 'fb_login: using waitForConsent')
+              await waitForConsent(page)
+            }
+
+            // Wait 5s then send first screenshot
+            await new Promise(r => setTimeout(r, 5000))
+            await requestCode.screenshot(page, '📸 5s after click')
+
+            // If still on the same confirm page, send 3 screenshots 7s apart then error out
+            if (is2FAConfirmPage(page.url())) {
+              for (let i = 0; i < 3; i++) {
+                await new Promise(r => setTimeout(r, 7000))
+                await requestCode.screenshot(page, `📸 ${5 + (i + 1) * 7}s after click`)
+              }
+              return { success: false, error: 'Page did not advance after clicking the button.' }
             }
 
           } else if (is2FACodePage(currentUrl)) {
