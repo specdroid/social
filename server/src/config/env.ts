@@ -13,8 +13,6 @@ const envSchema = z.object({
   WA_ENABLED: z.coerce.boolean().default(true),
   WA_PROXY_URL: z.string().default(''),
 
-  META_APP_ID: z.string().default(''),
-  META_APP_SECRET: z.string().default(''),
   META_VERIFY_TOKEN: z.string().default(''),
 
   STRIPE_SECRET_KEY: z.string().default(''),

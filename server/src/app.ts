@@ -93,11 +93,6 @@ export function createApp(): express.Application {
           example: 'ws list schools: Hello everyone!',
         },
         {
-          command: 'ws fb login',
-          description: 'Generate a Facebook OAuth URL. Open it in your browser, authorize the app, and the access token will be saved automatically.',
-          example: 'ws fb login',
-        },
-        {
           command: 'ws test <rule name>: <trigger>',
           description: 'Test an automation rule by simulating a trigger.',
           example: 'ws test welcome bot: hello',
@@ -151,93 +146,6 @@ export function createApp(): express.Application {
 
   app.use('/webhooks/meta', metaWebhookRoutes)
   app.use('/webhooks/stripe', stripeWebhookRoutes)
-
-  // ── Facebook Login web page ──────────────────────────────────────────
-  app.get('/fb-login', (_req, res) => {
-    const appId = env.META_APP_ID
-    if (!appId) {
-      res.status(500).send('META_APP_ID not configured')
-      return
-    }
-    const jid = typeof _req.query.jid === 'string' ? _req.query.jid : ''
-
-    res.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Facebook Login</title>
-<style>
-body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f0f2f5}
-.card{background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.1);text-align:center;max-width:400px;width:90%}
-h1{color:#1a1a2e;font-size:24px;margin-bottom:8px}
-p{color:#666;margin-bottom:24px;font-size:14px}
-.fb-login-button{display:inline-block;background:#1877f2;color:#fff;border:none;border-radius:6px;padding:12px 24px;font-size:16px;cursor:pointer;font-weight:600}
-.fb-login-button:hover{background:#166fe5}
-#status{margin-top:16px;padding:12px;border-radius:6px;display:none;font-size:14px}
-#status.success{display:block;background:#e6f7e6;color:#2e7d32}
-#status.error{display:block;background:#fde8e8;color:#c62828}
-</style>
-</head>
-<body>
-<div class="card">
-<h1>Connect Facebook</h1>
-<p>Authorize the app to post to your feed.</p>
-<button class="fb-login-button" id="loginBtn">Login with Facebook</button>
-<div id="status"></div>
-</div>
-
-<script>
-const JID = ${JSON.stringify(jid)};
-const APP_ID = ${JSON.stringify(appId)};
-
-function setStatus(msg, type) {
-  const el = document.getElementById('status');
-  el.textContent = msg;
-  el.className = type;
-}
-
-// Load FB SDK
-window.fbAsyncInit = function() {
-  FB.init({ appId: APP_ID, version: 'v21.0' });
-};
-
-(function(d, s, id) {
-  var js, fjs = d.getElementsByTagName(s)[0];
-  if (d.getElementById(id)) return;
-  js = d.createElement(s); js.id = id;
-  js.src = "https://connect.facebook.net/en_US/sdk.js";
-  fjs.parentNode.insertBefore(js, fjs);
-}(document, 'script', 'facebook-jssdk'));
-
-document.getElementById('loginBtn').addEventListener('click', function() {
-  setStatus('Opening Facebook...', '');
-  FB.login(function(response) {
-    if (response.authResponse) {
-      setStatus('Authorized. Saving token...', '');
-      fetch('/api/facebook/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken: response.authResponse.accessToken, jid: JID })
-      })
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) {
-          setStatus('✅ Connected! You can close this tab.', 'success');
-        } else {
-          setStatus('❌ ' + (data.error || 'Failed to save token'), 'error');
-        }
-      })
-      .catch(err => setStatus('❌ Network error: ' + err.message, 'error'));
-    } else {
-      setStatus('❌ Login cancelled or failed.', 'error');
-    }
-  }, { scope: 'publish_posts,user_posts' });
-});
-</script>
-</body>
-</html>`)
-  })
 
   app.use(errorHandler)
 

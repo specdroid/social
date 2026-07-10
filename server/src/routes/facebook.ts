@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express'
+import { Router, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import path from 'path'
 import fs from 'fs'
@@ -6,58 +6,9 @@ import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import { AppError } from '../middleware/errorHandler'
 import { log } from '../utils/logger'
-import { processAccessToken } from '../facebook'
-import { sendWhatsAppMessage } from '../services/whatsappBot'
 
 const router = Router()
 const prisma = new PrismaClient()
-
-// ── POST /api/facebook/token — receive access token from web page ──
-router.post('/token', async (req: Request, res: Response) => {
-  const { accessToken, jid } = req.body as { accessToken?: string; jid?: string }
-  if (!accessToken) {
-    res.status(400).json({ success: false, error: 'accessToken required' })
-    return
-  }
-
-  log('info', 'meta_api', 'fb: token received from web page', { jid })
-
-  try {
-    const result = await processAccessToken(accessToken)
-    if (!result.success) {
-      if (jid) {
-        try { await sendWhatsAppMessage(jid, `❌ Facebook login failed: ${result.error}`) } catch {}
-      }
-      res.json({ success: false, error: result.error })
-      return
-    }
-
-    const user = await prisma.user.findFirst()
-    if (!user) {
-      res.json({ success: false, error: 'No user found in database.' })
-      return
-    }
-
-    await prisma.facebookAccount.upsert({
-      where: { fbId: result.fbUserId! },
-      update: { accessToken: result.accessToken!, fbName: result.fbUserName, userId: user.id },
-      create: { fbId: result.fbUserId!, fbName: result.fbUserName, accessToken: result.accessToken!, userId: user.id },
-    })
-
-    if (jid) {
-      try { await sendWhatsAppMessage(jid, `✅ Facebook login successful! Connected as *${result.fbUserName || result.fbUserId}*`) } catch {}
-    }
-
-    res.json({ success: true })
-  } catch (err) {
-    const msg = (err as Error).message
-    log('error', 'meta_api', 'fb: token processing error', { error: msg })
-    if (jid) {
-      try { await sendWhatsAppMessage(jid, `❌ Facebook login failed: ${msg}`) } catch {}
-    }
-    res.json({ success: false, error: msg })
-  }
-})
 
 router.get('/pages', requireAuth, async (req: AuthRequest, res: Response) => {
   const pages = await prisma.facebookPage.findMany({

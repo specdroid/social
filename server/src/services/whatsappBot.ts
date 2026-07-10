@@ -1565,30 +1565,6 @@ _Example:_ ws test welcome bot: hello
     return true
   }
 
-  // ── ws fb login ── send Facebook login web app URL ──
-  if (/^ws fb login\s+(-h|--help|-H)$/i.test(textContent.trim())) {
-    await sock.sendMessage(sender, { text: `📋 *ws fb login*\n\nGet a link to a web page where you can log into Facebook and authorize the app to post to your feed.\n\n_Example:_ ws fb login` })
-    return true
-  }
-  if (/^ws fb login$/i.test(textContent.trim())) {
-    try {
-      const baseUrl = env.FRONTEND_URL.replace(/\/$/, '')
-      const url = `${baseUrl}/fb-login?jid=${encodeURIComponent(sender)}`
-      await sock.sendMessage(sender, {
-        text: `🔑 *Facebook Login*
-
-Open this link in your browser and click "Login with Facebook":
-
-${url}
-
-After you authorize, the token will be saved automatically and you'll get a confirmation here.`,
-      })
-    } catch (err) {
-      await sock.sendMessage(sender, { text: `❌ ${(err as Error).message}` })
-    }
-    return true
-  }
-
   // ── catch unrecognized ws commands ──
   if (/^ws\s+/i.test(textContent)) {
     await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nws get groups' })
@@ -1604,7 +1580,7 @@ After you authorize, the token will be saved automatically and you'll get a conf
 
   const fbAccount = await prisma.facebookAccount.findFirst()
   if (!fbAccount) {
-    await sock.sendMessage(sender, { text: '❌ No Facebook account connected. Use `ws fb login` first.' })
+    await sock.sendMessage(sender, { text: '❌ No Facebook account connected.' })
     log('warn', 'whatsapp', 'facebook_feed: no Facebook account connected')
     return true
   }
