@@ -105,54 +105,68 @@ def main():
         time.sleep(5)
 
         # Dismiss "Continue as [name]" dialog
-        # Dump all elements containing 'Continue' text for debugging
         try:
-            debug_els = driver.execute_script("""
-                return [...document.querySelectorAll('*')]
-                    .filter(e => e.textContent.trim().includes('Continue'))
-                    .slice(0,10)
-                    .map(e => ({
+            # Debug: dump elements with Continue in textContent
+            dump = driver.execute_script("""
+                const all = [...document.querySelectorAll('*')]
+                    .filter(e => e.textContent.trim().includes('Continue'));
+                const exact = all.filter(e => e.textContent.trim() === 'Continue');
+                const partial = all.filter(e => e.textContent.trim() !== 'Continue').slice(0,5);
+                return {
+                    exactCount: exact.length,
+                    exact: exact.slice(0,5).map(e => ({
                         tag: e.tagName,
                         role: e.getAttribute('role'),
-                        ariaLabel: e.getAttribute('aria-label'),
-                        text: e.textContent.trim().substring(0,100),
-                        visible: e.offsetParent !== null,
-                        outer: e.outerHTML.substring(0,250)
+                        outer: e.outerHTML.substring(0,200)
+                    })),
+                    partial: partial.map(e => ({
+                        tag: e.tagName,
+                        role: e.getAttribute('role'),
+                        text: e.textContent.trim().substring(0,80),
+                        outer: e.outerHTML.substring(0,150)
                     }))
+                };
             """)
-            if debug_els:
-                with open('/tmp/fb_continue_debug.json', 'w') as f:
-                    json.dump(debug_els, f, indent=2)
-        except Exception:
-            pass
-        # Try clicking Continue via JS (click the topmost interactive parent)
-        try:
-            driver.execute_script("""
-                const cont = [...document.querySelectorAll('*')]
-                    .filter(e => e.textContent.trim().includes('Continue'))
-                    .find(e => {
-                        const t = e.textContent.trim();
-                        return t === 'Continue' || t.startsWith('Continue ');
-                    });
-                if (cont) {
-                    // Walk up to find a clickable parent
-                    let el = cont;
-                    while (el && el !== document.body) {
-                        const role = el.getAttribute('role');
-                        const tag = el.tagName.toLowerCase();
-                        if (role === 'button' || tag === 'button' || tag === 'a' || el.onclick) {
-                            el.click();
-                            return true;
+            json.dump(dump, open('/tmp/fb_cont_debug2.json', 'w'), indent=2)
+            # Try to click based on findings
+            if dump.get('exactCount', 0) > 0:
+                el = dump['exact'][0]
+                driver.execute_script("""
+                    const all = [...document.querySelectorAll('*')]
+                        .filter(e => e.textContent.trim() === 'Continue');
+                    if (all.length > 0) {
+                        let el = all[0];
+                        while (el && el !== document.body) {
+                            const role = el.getAttribute('role');
+                            const tag = el.tagName.toLowerCase();
+                            if (role === 'button' || role === 'link' || tag === 'button' || tag === 'a') {
+                                el.click();
+                                return;
+                            }
+                            el = el.parentElement;
                         }
-                        el = el.parentElement;
+                        all[0].click();
                     }
-                    // Fallback: click the found element directly
-                    cont.click();
-                    return true;
-                }
-                return false;
-            """)
-            time.sleep(3)
+                """)
+                time.sleep(3)
+            else:
+                # No element with exact "Continue" text; try clicking any role=button in login area
+                driver.execute_script("""
+                    const btns = [...document.querySelectorAll('[role="button"]')]
+                        .filter(e => e.offsetParent !== null && e.textContent.trim().length > 0);
+                    if (btns.length > 0) {
+                        btns[0].click();
+                    }
+                """)
+                time.sleep(2)
+                driver.execute_script("""
+                    const btns = [...document.querySelectorAll('[role="button"]')]
+                        .filter(e => e.offsetParent !== null && e.textContent.trim().length > 0);
+                    if (btns.length > 0) {
+                        btns[0].click();
+                    }
+                """)
+                time.sleep(2)
         except Exception:
             pass
         # Navigate again to bypass dialog
