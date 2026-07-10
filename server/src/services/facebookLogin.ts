@@ -158,10 +158,15 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
       ])
 
       await new Promise(r => setTimeout(r, 3000))
-      log('info', 'meta_api', 'fb_login: after submit', { url: page.url(), title: await page.title() })
+      const urlAfterSubmit = page.url()
+      log('info', 'meta_api', 'fb_login: after submit', { url: urlAfterSubmit, title: await page.title() })
+
+      if (urlAfterSubmit.includes('two_step_verification')) {
+        return { success: false, error: 'Two-factor authentication (2FA) is enabled. Disable it or use an app password.' }
+      }
 
       // Check for token after login
-      const m = page.url().match(/access_token=([^&]+)/)
+      const m = urlAfterSubmit.match(/access_token=([^&]+)/)
       if (m) shortLivedToken = m[1]
       if (!shortLivedToken) {
         const h = await page.evaluate('window.location.hash').catch(() => '') as string
@@ -170,18 +175,23 @@ export async function facebookLogin(email: string, password: string): Promise<Lo
       }
     }
 
+    if (!shortLivedToken && page.url().includes('two_step_verification')) {
+      return { success: false, error: 'Two-factor authentication (2FA) is enabled. Disable it or use an app password.' }
+    }
+
     if (!shortLivedToken) {
       // Handle consent page (if redirected there after login)
       shortLivedToken = await waitForConsent(page)
     }
 
     if (!shortLivedToken) {
+      const finalUrl = page.url()
       const finalHash = await page.evaluate('window.location.hash').catch(() => '') as string
-      log('warn', 'meta_api', 'fb_login: failed to obtain token', { url: page.url(), hash: finalHash, title: await page.title() })
-      return {
-        success: false,
-        error: `Could not obtain access token. Final URL: ${page.url()}, Page title: ${await page.title()}`,
+      log('warn', 'meta_api', 'fb_login: failed to obtain token', { url: finalUrl, hash: finalHash, title: await page.title() })
+      if (finalUrl.includes('two_step_verification')) {
+        return { success: false, error: 'Two-factor authentication (2FA) is enabled. Disable it or use an app password.' }
       }
+      return { success: false, error: `Could not obtain access token.` }
     }
 
     log('info', 'meta_api', 'fb_login: exchanging for long-lived token')
