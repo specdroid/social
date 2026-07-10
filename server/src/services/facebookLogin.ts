@@ -50,6 +50,8 @@ async function waitForConsent(page: Page): Promise<string> {
         text.includes('continue') ||
         text.includes('allow') ||
         text.includes('connect') ||
+        text.includes('yes') ||
+        text.includes('this was me') ||
         cls.includes('confirm') ||
         (text && !cls.includes('cancel'))
       ) {
@@ -188,35 +190,49 @@ export async function facebookLogin(email: string, password: string, requestCode
       log('info', 'meta_api', 'fb_login: after submit', { url: urlAfterSubmit, title: await page.title() })
 
       if (is2FA(urlAfterSubmit)) {
-        if (is2FAConfirmPage(urlAfterSubmit)) {
-          if (!requestCode) {
-            return { success: false, error: 'Facebook sent a login confirmation to your phone. Approve it and retry.' }
-          }
-          log('info', 'meta_api', 'fb_login: waiting for phone confirmation')
-          await requestCode(urlAfterSubmit)
-          // Wait for user to confirm on phone, page will advance
-          for (let i = 0; i < 60; i++) {
-            await new Promise(r => setTimeout(r, 2000))
+        // Handle 2FA — loop in case the page transitions (confirm → code, etc.)
+        for (let attempt = 0; attempt < 10 && is2FA(page.url()); attempt++) {
+          const currentUrl = page.url()
+          log('info', 'meta_api', `fb_login: 2FA attempt ${attempt}`, { url: currentUrl })
+
+          if (is2FAConfirmPage(currentUrl)) {
+            if (!requestCode) {
+              return { success: false, error: 'Facebook sent a login confirmation to your phone. Approve it and retry.' }
+            }
+            log('info', 'meta_api', 'fb_login: waiting for phone confirmation')
+            await requestCode(currentUrl)
+            await new Promise(r => setTimeout(r, 30000))
+            log('info', 'meta_api', 'fb_login: trying to advance past confirm page')
+
+            const confirmToken = await waitForConsent(page)
+            if (confirmToken) { shortLivedToken = confirmToken; break }
             if (!is2FA(page.url())) break
+
+            // Reload — page may reflect confirmed state
+            log('info', 'meta_api', 'fb_login: reloading after phone confirmation')
+            await page.reload({ waitUntil: 'networkidle0', timeout: 30000 }).catch(() => {})
+            await new Promise(r => setTimeout(r, 3000))
+            if (!is2FA(page.url())) break
+
+          } else if (is2FACodePage(currentUrl)) {
+            if (!requestCode) {
+              return { success: false, error: 'Two-factor authentication code required.' }
+            }
+            log('info', 'meta_api', 'fb_login: requesting 2FA code')
+            const code = await requestCode(currentUrl)
+            log('info', 'meta_api', 'fb_login: code received, entering it')
+            const ok = await enter2FACode(page, code)
+            if (!ok) {
+              return { success: false, error: 'Invalid 2FA code.' }
+            }
+            log('info', 'meta_api', 'fb_login: 2FA passed')
+            break
+
+          } else {
+            return { success: false, error: `Unexpected 2FA page: ${currentUrl}` }
           }
-          if (is2FA(page.url())) {
-            return { success: false, error: 'Phone confirmation timed out.' }
-          }
-          log('info', 'meta_api', 'fb_login: phone confirmation received')
-        } else if (is2FACodePage(urlAfterSubmit)) {
-          if (!requestCode) {
-            return { success: false, error: 'Two-factor authentication code required.' }
-          }
-          log('info', 'meta_api', 'fb_login: requesting 2FA code')
-          const code = await requestCode(urlAfterSubmit)
-          log('info', 'meta_api', 'fb_login: code received, entering it')
-          const ok = await enter2FACode(page, code)
-          if (!ok) {
-            return { success: false, error: 'Invalid 2FA code.' }
-          }
-          log('info', 'meta_api', 'fb_login: 2FA passed')
-        } else {
-          return { success: false, error: `Unexpected 2FA page: ${urlAfterSubmit}` }
+
+          await new Promise(r => setTimeout(r, 2000))
         }
       }
 
