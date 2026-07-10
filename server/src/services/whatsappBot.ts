@@ -1573,8 +1573,7 @@ _Example:_ ws test welcome bot: hello
   }
   if (/^ws fb login$/i.test(textContent.trim())) {
     try {
-      const normSender = normalizeJid(actualSender)
-      const url = generateOAuthUrl(normSender)
+      const url = generateOAuthUrl(sender)
       await sock.sendMessage(sender, {
         text: `🔑 *Facebook Login*
 
