@@ -92,7 +92,7 @@ def main():
     try:
         chromedriver_path = find_chromedriver()
         if not chromedriver_path:
-            print(json.dumps({'success': False, 'error': 'chromedriver not found'}))
+            print(json.dumps({'success': False, 'error': 'chromedriver not found'}), flush=True)
             return
         service = ChromeService(chromedriver_path)
         driver = webdriver.Chrome(service=service, options=options)
@@ -121,9 +121,9 @@ def main():
         if not logged_in:
             page_title = driver.title.lower()
             if 'login' in page_title or 'log in' in page_title:
-                print(json.dumps({'success': False, 'error': 'Not logged in. Export a fresh cookies.txt from Chrome while on facebook.com.'}))
+                print(json.dumps({'success': False, 'error': 'Not logged in. Export a fresh cookies.txt from Chrome while on facebook.com.'}), flush=True)
             else:
-                print(json.dumps({'success': False, 'error': 'Could not find the post box. Facebook page structure may have changed.'}))
+                print(json.dumps({'success': False, 'error': 'Could not find the post box. Facebook page structure may have changed.'}), flush=True)
             return
 
         # Click the post box trigger (JS click to bypass interception)
@@ -137,7 +137,7 @@ def main():
                 clicked = True
                 break
         if not clicked:
-            print(json.dumps({'success': False, 'error': 'Failed to click post box'}))
+            print(json.dumps({'success': False, 'error': 'Failed to click post box'}), flush=True)
             return
 
         time.sleep(2)
@@ -153,7 +153,7 @@ def main():
                     (By.XPATH, "//div[@role='textbox']")
                 ))
             except TimeoutException as e:
-                print(json.dumps({'success': False, 'error': f'Could not find text input: {e}'}))
+                print(json.dumps({'success': False, 'error': f'Could not find text input: {e}'}), flush=True)
                 return
 
         textbox.click()
@@ -167,7 +167,7 @@ def main():
                 file_input.send_keys(os.path.abspath(args.image))
                 time.sleep(3)
             except Exception as e:
-                print(json.dumps({'success': False, 'error': f'Image upload failed: {e}'}))
+                print(json.dumps({'success': False, 'error': f'Image upload failed: {e}'}), flush=True)
                 return
 
         time.sleep(1)
@@ -181,14 +181,14 @@ def main():
                 post_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[contains(text(),'Post')]/..")))
                 post_btn.click()
             except TimeoutException as e:
-                print(json.dumps({'success': False, 'error': f'Could not find Post button: {e}'}))
+                print(json.dumps({'success': False, 'error': f'Could not find Post button: {e}'}), flush=True)
                 return
 
         time.sleep(4)
-        print(json.dumps({'success': True}))
+        print(json.dumps({'success': True}), flush=True)
 
     except Exception as e:
-        print(json.dumps({'success': False, 'error': f'{type(e).__name__}: {e}'}))
+        print(json.dumps({'success': False, 'error': f'{type(e).__name__}: {e}'}), flush=True)
     finally:
         if driver:
             try:
