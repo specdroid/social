@@ -1549,7 +1549,10 @@ _Example:_ ws test welcome bot: hello
         })
       })
 
-      const result = JSON.parse(stdout)
+      // Take the last JSON line (diagnostic lines may precede it)
+      const lines = stdout.trim().split('\n').filter(l => l.trim())
+      const lastLine = lines[lines.length - 1] || '{}'
+      const result = JSON.parse(lastLine)
       if (result.success) {
         await sock.sendMessage(sender, { text: `✅ Posted to Facebook wall\n${content.slice(0, 200)}` })
         log('info', 'whatsapp', 'facebook_wall: post sent')
