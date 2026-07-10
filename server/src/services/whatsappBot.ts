@@ -1731,16 +1731,16 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         return
       }
       if (pending.state === 'confirm' && (text.toLowerCase() === 'done' || text.toLowerCase() === 'confirmed')) {
-        await sock.sendMessage(sender, { text: '✅ Confirmed, sending screenshots every 30s... Reply "try another way" or whatever you want me to do.' })
+        await sock.sendMessage(sender, { text: '✅ Confirmed, sending screenshots every 15s... Reply "try another way" or whatever you want me to do.' })
         // Start sending screenshots every 30s in the background
         const screenshotInterval = setInterval(async () => {
           if (pending.page) {
             try {
               const buf = await pending.page.screenshot({ encoding: 'base64' })
-              await sock.sendMessage(sender, { image: Buffer.from(buf, 'base64'), caption: '📸 Page state update (30s)' }).catch(() => {})
+              await sock.sendMessage(sender, { image: Buffer.from(buf, 'base64'), caption: '📸 Page state update (15s)' }).catch(() => {})
             } catch {}
           }
-        }, 30000)
+        }, 15000)
         // Transition to instruction state — stops interval on resolve
         const oldResolve = pending.resolve
         const oldReject = pending.reject
