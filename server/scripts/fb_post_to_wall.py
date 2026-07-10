@@ -16,10 +16,26 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
-from webdriver_manager.chrome import ChromeDriverManager
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FB_URL = 'https://facebook.com/me'
+
+
+def find_chromedriver():
+    """Locate chromedriver binary."""
+    candidates = [
+        'chromedriver',
+        '/snap/bin/chromium.chromedriver',
+        '/usr/lib/chromium-browser/chromedriver',
+        '/usr/bin/chromedriver',
+        '/snap/chromium/current/usr/lib/chromium-browser/chromedriver',
+    ]
+    for c in candidates:
+        if os.path.isfile(c) or os.path.isfile('/' + c.lstrip('/')):
+            return c
+    # Fall back to PATH lookup
+    import shutil
+    return shutil.which('chromedriver') or shutil.which('chromium.chromedriver')
 
 
 def load_cookies(driver, cookies_path):
@@ -69,7 +85,11 @@ def main():
 
     driver = None
     try:
-        service = ChromeService(ChromeDriverManager().install())
+        chromedriver_path = find_chromedriver()
+        if not chromedriver_path:
+            print(json.dumps({'success': False, 'error': 'chromedriver not found. Install chromium-chromedriver or place it in PATH.'}))
+            return
+        service = ChromeService(chromedriver_path)
         driver = webdriver.Chrome(service=service, options=options)
 
         # Load cookies if provided
