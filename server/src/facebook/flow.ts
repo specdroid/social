@@ -31,7 +31,7 @@ export class LoginFlow {
     log('info', 'meta_api', 'fb: OAuth page loaded', { url: page.url(), title: await page.title() })
 
     // Try to extract token from URL (works if session cookies restored)
-    let shortLivedToken = this.extractToken(page)
+    let shortLivedToken = await this.extractToken(page)
     if (shortLivedToken) {
       log('info', 'meta_api', 'fb: token from URL (session valid)')
       return this.exchangeAndFetch(shortLivedToken, appId, appSecret)
@@ -54,7 +54,7 @@ export class LoginFlow {
     log('info', 'meta_api', 'fb: after submit', { url: afterUrl, title: await page.title() })
 
     // Check for token in URL after login
-    shortLivedToken = this.extractToken(page)
+    shortLivedToken = await this.extractToken(page)
     if (shortLivedToken) {
       return this.exchangeAndFetch(shortLivedToken, appId, appSecret)
     }
@@ -63,7 +63,7 @@ export class LoginFlow {
     if (afterUrl.includes('two_step_verification')) {
       const result = await this.handle2FA(page, afterUrl, requestCode)
       if (result) return result
-      shortLivedToken = this.extractToken(page)
+      shortLivedToken = await this.extractToken(page)
       if (shortLivedToken) {
         return this.exchangeAndFetch(shortLivedToken, appId, appSecret)
       }
@@ -86,12 +86,12 @@ export class LoginFlow {
     return this.exchangeAndFetch(shortLivedToken, appId, appSecret)
   }
 
-  private extractToken(page: Page): string {
+  private async extractToken(page: Page): Promise<string> {
     const urlMatch = page.url().match(/access_token=([^&]+)/)
     if (urlMatch) return urlMatch[1]
-    const hash = page.evaluate('window.location.hash').catch(() => '') as unknown as string
+    const hash = await page.evaluate('window.location.hash').catch(() => '') as string
     if (!hash) return ''
-    const hashMatch = (hash as string).match(/access_token=([^&]+)/)
+    const hashMatch = hash.match(/access_token=([^&]+)/)
     return hashMatch ? hashMatch[1] : ''
   }
 
@@ -230,7 +230,7 @@ export class LoginFlow {
   private async waitForConsent(page: Page): Promise<string> {
     log('info', 'meta_api', 'fb: waiting for consent button')
     for (let i = 0; i < 3; i++) {
-      const token = this.extractToken(page)
+      const token = await this.extractToken(page)
       if (token) return token
 
       const buttons = page.locator('button, input[type="submit"], [role="button"], a[role="button"]')
@@ -247,7 +247,7 @@ export class LoginFlow {
           log('info', 'meta_api', 'fb: clicking consent button')
           await buttons.nth(j).click().catch(() => {})
           await new Promise(r => setTimeout(r, 3000))
-          const token2 = this.extractToken(page)
+          const token2 = await this.extractToken(page)
           if (token2) return token2
           if (page.url().includes('login_success.html')) {
             const h = await page.evaluate('window.location.hash').catch(() => '') as string
