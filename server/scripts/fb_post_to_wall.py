@@ -119,10 +119,21 @@ def main():
 
         if not logged_in:
             page_title = driver.title.lower()
+            page_url = driver.current_url
             if 'login' in page_title or 'log in' in page_title:
                 print(json.dumps({'success': False, 'error': 'Not logged in. Export a fresh cookies.txt from Chrome while on facebook.com.'}), flush=True)
             else:
-                print(json.dumps({'success': False, 'error': 'Could not find the post box. Facebook page structure may have changed.'}), flush=True)
+                screenshot_path = '/tmp/fb_debug.png'
+                try:
+                    driver.save_screenshot(screenshot_path)
+                except Exception:
+                    screenshot_path = None
+                body_text = driver.find_element(By.TAG_NAME, 'body').text[:500] if driver.find_elements(By.TAG_NAME, 'body') else ''
+                diag = f'title="{page_title}" url={page_url}'
+                if screenshot_path:
+                    diag += f' screenshot={screenshot_path}'
+                diag += f' body="{body_text}"'
+                print(json.dumps({'success': False, 'error': f'Could not find the post box. {diag}'}), flush=True)
             return
 
         # Click the post box trigger (JS click to bypass interception)
