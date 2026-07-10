@@ -241,8 +241,12 @@ export async function facebookLogin(email: string, password: string, requestCode
                   }
                 }
 
-                // Fallback: JS-based search for any clickable element with matching text
+                // Fallback: press Enter to submit (the Continue button might be form-based)
                 if (!clicked) {
+                  log('info', 'meta_api', 'fb_login: pressing Enter as fallback')
+                  await page.keyboard.press('Enter')
+                  await new Promise(r => setTimeout(r, 2000))
+                  // Try JS fallback for any visible element with matching text
                   log('info', 'meta_api', 'fb_login: trying JS fallback to find confirm button')
                   await page.evaluate(`(function() {
                     const keywords = ['continue', 'next', 'send', 'confirm', 'ok'];
