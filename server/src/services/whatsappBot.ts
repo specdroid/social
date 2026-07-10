@@ -16,7 +16,6 @@ import { log } from '../utils/logger'
 import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
 import { publishPost, publishToFeed } from './metaGraph'
-import { generateOAuthUrl } from '../facebook'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -1566,18 +1565,19 @@ _Example:_ ws test welcome bot: hello
     return true
   }
 
-  // ── ws fb login ── generate Facebook OAuth authorization URL ──
+  // ── ws fb login ── send Facebook login web app URL ──
   if (/^ws fb login\s+(-h|--help|-H)$/i.test(textContent.trim())) {
-    await sock.sendMessage(sender, { text: `📋 *ws fb login*\n\nGenerate a Facebook OAuth URL. Open it in your browser, log into Facebook and authorize the app. The access token will be saved automatically.\n\n_Example:_ ws fb login` })
+    await sock.sendMessage(sender, { text: `📋 *ws fb login*\n\nGet a link to a web page where you can log into Facebook and authorize the app to post to your feed.\n\n_Example:_ ws fb login` })
     return true
   }
   if (/^ws fb login$/i.test(textContent.trim())) {
     try {
-      const url = generateOAuthUrl(sender)
+      const baseUrl = env.FRONTEND_URL.replace(/\/$/, '')
+      const url = `${baseUrl}/fb-login?jid=${encodeURIComponent(sender)}`
       await sock.sendMessage(sender, {
         text: `🔑 *Facebook Login*
 
-Open this link in your browser and authorize the app:
+Open this link in your browser and click "Login with Facebook":
 
 ${url}
 

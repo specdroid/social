@@ -6,52 +6,56 @@ import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import { AppError } from '../middleware/errorHandler'
 import { log } from '../utils/logger'
-import { exchangeCodeForToken } from '../facebook'
+import { processAccessToken } from '../facebook'
 import { sendWhatsAppMessage } from '../services/whatsappBot'
 
 const router = Router()
 const prisma = new PrismaClient()
 
-// ── Facebook OAuth callback (no auth — called by Facebook redirect) ──
-router.get('/callback', async (req: Request, res: Response) => {
-  const { code, state } = req.query as { code?: string; state?: string }
-  if (!code || !state) {
-    res.status(400).send('<h1>Missing code or state parameter</h1>')
+// ── POST /api/facebook/token — receive access token from web page ──
+router.post('/token', async (req: Request, res: Response) => {
+  const { accessToken, jid } = req.body as { accessToken?: string; jid?: string }
+  if (!accessToken) {
+    res.status(400).json({ success: false, error: 'accessToken required' })
     return
   }
 
-  const sender = state
-  log('info', 'meta_api', 'fb: OAuth callback received', { sender })
+  log('info', 'meta_api', 'fb: token received from web page', { jid })
 
   try {
-      const result = await exchangeCodeForToken(code)
-      if (!result.success) {
-        await sendWhatsAppMessage(sender, `❌ Facebook login failed: ${result.error}`)
-        res.send(`<h1>Login Failed</h1><p>${result.error}</p>`)
-        return
+    const result = await processAccessToken(accessToken)
+    if (!result.success) {
+      if (jid) {
+        try { await sendWhatsAppMessage(jid, `❌ Facebook login failed: ${result.error}`) } catch {}
       }
+      res.json({ success: false, error: result.error })
+      return
+    }
 
-      const user = await prisma.user.findFirst()
-      if (!user) {
-        await sendWhatsAppMessage(sender, '❌ No user found in database.')
-        res.send('<h1>Login Failed</h1><p>No user found in database.</p>')
-        return
-      }
+    const user = await prisma.user.findFirst()
+    if (!user) {
+      res.json({ success: false, error: 'No user found in database.' })
+      return
+    }
 
-      await prisma.facebookAccount.upsert({
-        where: { fbId: result.fbUserId! },
-        update: { accessToken: result.accessToken!, fbName: result.fbUserName, userId: user.id },
-        create: { fbId: result.fbUserId!, fbName: result.fbUserName, accessToken: result.accessToken!, userId: user.id },
-      })
+    await prisma.facebookAccount.upsert({
+      where: { fbId: result.fbUserId! },
+      update: { accessToken: result.accessToken!, fbName: result.fbUserName, userId: user.id },
+      create: { fbId: result.fbUserId!, fbName: result.fbUserName, accessToken: result.accessToken!, userId: user.id },
+    })
 
-      await sendWhatsAppMessage(sender, `✅ Facebook login successful! Connected as *${result.fbUserName || result.fbUserId}*`)
+    if (jid) {
+      try { await sendWhatsAppMessage(jid, `✅ Facebook login successful! Connected as *${result.fbUserName || result.fbUserId}*`) } catch {}
+    }
 
-      res.send(`<h1>Login Successful</h1><p>You can close this tab. Check WhatsApp for confirmation.</p>`)
+    res.json({ success: true })
   } catch (err) {
     const msg = (err as Error).message
-    log('error', 'meta_api', 'fb: OAuth callback error', { error: msg })
-    try { await sendWhatsAppMessage(sender, `❌ Facebook login failed: ${msg}`) } catch {}
-    res.send(`<h1>Login Failed</h1><p>${msg}</p>`)
+    log('error', 'meta_api', 'fb: token processing error', { error: msg })
+    if (jid) {
+      try { await sendWhatsAppMessage(jid, `❌ Facebook login failed: ${msg}`) } catch {}
+    }
+    res.json({ success: false, error: msg })
   }
 })
 
