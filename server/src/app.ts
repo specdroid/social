@@ -55,7 +55,7 @@ export function createApp(): express.Application {
         },
         {
           command: 'ws fb post: <content>',
-          description: 'Post a message to your Facebook wall (via browser automation).',
+          description: 'Post a message to your Facebook wall (via browser automation). Attach an image or document to include media.',
           example: 'ws fb post: Hello Facebook!',
         },
         {

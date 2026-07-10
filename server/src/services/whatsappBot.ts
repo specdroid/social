@@ -1242,7 +1242,7 @@ Post to your Facebook Page (API)
 _Example:_ fb: Hello Page!
 
 🔹 *ws fb post: content*
-Post to your Facebook wall (browser)
+Post to your Facebook wall (browser). Attach an image or document to include media.
 _Example:_ ws fb post: Hello Facebook!
 
 🔹 *ws fb login*
@@ -1516,21 +1516,30 @@ _Example:_ ws test welcome bot: hello
 
     try {
       const imageMsg = message.message?.imageMessage
+      const docMsg = message.message?.documentMessage
       let content = wallContent
-      let imagePath: string | null = null
+      let filePath: string | null = null
 
       if (imageMsg) {
         const buffer = await downloadMediaMessage(message, 'buffer', {})
         const fileName = `fb_${Date.now()}.jpg`
-        const filePath = path.resolve(process.cwd(), 'uploads', fileName)
-        fs.writeFileSync(filePath, buffer as Buffer)
-        imagePath = filePath
+        const fpath = path.resolve(process.cwd(), 'uploads', fileName)
+        fs.writeFileSync(fpath, buffer as Buffer)
+        filePath = fpath
         content = imageMsg.caption || wallContent || ''
+      } else if (docMsg) {
+        const buffer = await downloadMediaMessage(message, 'buffer', {})
+        const ext = path.extname(docMsg.fileName || 'document') || '.bin'
+        const fileName = `fb_${Date.now()}${ext}`
+        const fpath = path.resolve(process.cwd(), 'uploads', fileName)
+        fs.writeFileSync(fpath, buffer as Buffer)
+        filePath = fpath
+        content = docMsg.caption || wallContent || ''
       }
 
       const scriptPath = path.resolve(process.cwd(), 'scripts', 'fb_post_to_wall.py')
       const args = ['--content', content]
-      if (imagePath) args.push('--image', imagePath)
+      if (filePath) args.push('--file', filePath)
 
       const cookiesPath = path.resolve(process.cwd(), 'fb_cookies.txt')
       if (fs.existsSync(cookiesPath)) args.push('--cookies', cookiesPath)

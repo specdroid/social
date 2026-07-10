@@ -71,7 +71,8 @@ def js_click(driver, xpath):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--content', required=True)
-    parser.add_argument('--image', default=None)
+    parser.add_argument('--file', default=None,
+                        help='Path to image or document to attach')
     parser.add_argument('--cookies', default=None,
                         help='Path to Netscape-format cookies.txt exported from Chrome')
     args = parser.parse_args()
@@ -170,14 +171,32 @@ def main():
         time.sleep(0.3)
         textbox.send_keys(args.content)
 
-        # Handle image upload
-        if args.image and os.path.isfile(args.image):
+        # Handle file upload (image or document)
+        if args.file and os.path.isfile(args.file):
+            file_abs = os.path.abspath(args.file)
+
+            # Try clicking photo/video button first
+            photo_btn_clicked = False
+            for selector in [
+                "//div[@aria-label='Photo/video']",
+                "//div[contains(@aria-label,'Photo')]",
+                "//span[text()='Photo/video']/..",
+                "//div[@role='button' and .//span[text()='Add to your post']]",
+            ]:
+                if js_click(driver, selector):
+                    photo_btn_clicked = True
+                    time.sleep(1)
+                    break
+
+            # Find file input and upload
             try:
-                file_input = driver.find_element(By.XPATH, "//input[@type='file' and contains(@accept, 'image')]")
-                file_input.send_keys(os.path.abspath(args.image))
-                time.sleep(3)
+                if photo_btn_clicked:
+                    time.sleep(0.5)
+                file_input = driver.find_element(By.XPATH, "//input[@type='file']")
+                file_input.send_keys(file_abs)
+                time.sleep(4)
             except Exception as e:
-                print(json.dumps({'success': False, 'error': f'Image upload failed: {e}'}), flush=True)
+                print(json.dumps({'success': False, 'error': f'File upload failed: {e}'}), flush=True)
                 return
 
         time.sleep(1)
