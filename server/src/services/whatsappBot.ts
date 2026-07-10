@@ -1605,8 +1605,8 @@ _Example:_ ws test welcome bot: hello
         },
         screenshot: async (page, caption) => {
           try {
-            const buf = await page.screenshot({ encoding: 'base64' })
-            await sock.sendMessage(sender, { image: Buffer.from(buf, 'base64'), caption })
+            const buf = await page.screenshot()
+            await sock.sendMessage(sender, { image: buf, caption })
           } catch {}
         },
       }
@@ -1736,8 +1736,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         const screenshotInterval = setInterval(async () => {
           if (pending.page) {
             try {
-              const buf = await pending.page.screenshot({ encoding: 'base64' })
-              await sock.sendMessage(sender, { image: Buffer.from(buf, 'base64'), caption: '📸 Page state update (7s)' }).catch(() => {})
+              const buf = await pending.page.screenshot()
+              await sock.sendMessage(sender, { image: buf, caption: '📸 Page state update (7s)' }).catch(() => {})
             } catch {}
           }
         }, 7000)

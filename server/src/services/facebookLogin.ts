@@ -1,11 +1,8 @@
-import puppeteer from 'puppeteer-extra'
-import StealthPlugin from 'puppeteer-extra-plugin-stealth'
-import type { Page } from 'puppeteer'
+import { chromium } from 'playwright'
+import type { Page } from 'playwright'
 import { env } from '../config/env'
 import { existsSync } from 'fs'
 import { log } from '../utils/logger'
-
-puppeteer.use(StealthPlugin())
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v21.0'
 
@@ -42,14 +39,15 @@ async function waitForConsent(page: Page): Promise<string> {
   for (let i = 0; i < 3; i++) {
     const urlMatch = page.url().match(/access_token=([^&]+)/)
     if (urlMatch) return urlMatch[1]
-    const hash = await (page.evaluate('window.location.hash') as Promise<string>).catch(() => '')
+    const hash = await page.evaluate('window.location.hash').catch(() => '') as string
     const hashMatch = hash.match(/access_token=([^&]+)/)
     if (hashMatch) return hashMatch[1]
 
-    const buttons = await page.$$('button, input[type="submit"], [role="button"], a[role="button"]')
-    for (const b of buttons) {
-      const text = await page.evaluate((el) => (el.textContent || '').trim().toLowerCase(), b).catch(() => '')
-      const cls = await page.evaluate((el) => el.className, b).catch(() => '')
+    const buttons = page.locator('button, input[type="submit"], [role="button"], a[role="button"]')
+    const count = await buttons.count()
+    for (let j = 0; j < count; j++) {
+      const text = (await buttons.nth(j).textContent() || '').trim().toLowerCase()
+      const cls = (await buttons.nth(j).getAttribute('class') || '')
       log('info', 'meta_api', `fb_login: button ${i}`, { text: text.slice(0, 80), class: cls.slice(0, 80) })
       if (
         text.includes('continue') ||
@@ -61,14 +59,14 @@ async function waitForConsent(page: Page): Promise<string> {
         (text && !cls.includes('cancel'))
       ) {
         log('info', 'meta_api', 'fb_login: clicking confirm button')
-        await page.evaluate((el) => el.click(), b).catch(() => {})
+        await buttons.nth(j).click().catch(() => {})
         await new Promise(r => setTimeout(r, 3000))
         const u = page.url()
         log('info', 'meta_api', 'fb_login: after confirm click', { url: u })
         const m = u.match(/access_token=([^&]+)/)
         if (m) return m[1]
         if (u.includes('login_success.html')) {
-          const h = await (page.evaluate('window.location.hash') as Promise<string>).catch(() => '')
+          const h = await page.evaluate('window.location.hash').catch(() => '') as string
           const hm = h.match(/access_token=([^&]+)/)
           if (hm) return hm[1]
         }
@@ -82,15 +80,21 @@ async function waitForConsent(page: Page): Promise<string> {
 }
 
 async function enter2FACode(page: Page, code: string): Promise<boolean> {
-  const codeInput = await page.waitForSelector('input[type="text"], input[type="tel"], input[autocomplete="one-time-code"]', { timeout: 5000 }).catch(() => null) ||
-    await page.waitForSelector('#approvals_code', { timeout: 3000 }).catch(() => null)
-  if (!codeInput) return false
-  await codeInput.type(code, { delay: 20 })
+  let loc = page.locator('input[type="text"], input[type="tel"], input[autocomplete="one-time-code"]')
+  try {
+    await loc.waitFor({ state: 'attached', timeout: 5000 })
+  } catch {
+    loc = page.locator('#approvals_code')
+    try {
+      await loc.waitFor({ state: 'attached', timeout: 3000 })
+    } catch {
+      return false
+    }
+  }
+  await loc.fill(code)
   await new Promise(r => setTimeout(r, 300))
-  await Promise.all([
-    page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {}),
-    page.keyboard.press('Enter'),
-  ])
+  await page.keyboard.press('Enter')
+  await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {})
   await new Promise(r => setTimeout(r, 3000))
   return !page.url().includes('two_step_verification')
 }
@@ -118,9 +122,9 @@ export async function facebookLogin(email: string, password: string, requestCode
   const executablePath = findChrome()
   log('info', 'meta_api', 'fb_login: starting', { executablePath })
 
-  let browser
+  let browser: any
   try {
-    browser = await puppeteer.launch({
+    browser = await chromium.launch({
       headless: true,
       executablePath,
       args: [
@@ -132,21 +136,29 @@ export async function facebookLogin(email: string, password: string, requestCode
     })
     log('info', 'meta_api', 'fb_login: browser launched')
 
-    const page = await browser.newPage()
-    await page.setViewport({ width: 1366, height: 768 })
+    const context = await browser.newContext({
+      viewport: { width: 1366, height: 768 },
+      userAgent: 'Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    })
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined })
+      // @ts-ignore
+      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] })
+      // @ts-ignore
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] })
+    })
+    const page = await context.newPage()
 
-    // Navigate directly to OAuth URL (combines login + consent in one flow)
     const redirectUri = 'https://www.facebook.com/connect/login_success.html'
     const scope = 'pages_manage_posts,pages_read_engagement,pages_show_list'
     const oauthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token,granted_scopes&scope=${encodeURIComponent(scope)}&auth_type=rerequest`
 
     log('info', 'meta_api', 'fb_login: navigating to OAuth URL')
-    await page.goto(oauthUrl, { waitUntil: 'networkidle0', timeout: 30000 })
+    await page.goto(oauthUrl, { waitUntil: 'networkidle', timeout: 30000 })
     log('info', 'meta_api', 'fb_login: OAuth page loaded', { url: page.url(), title: await page.title() })
 
     let shortLivedToken = ''
 
-    // Check if URL already has token (already logged in with session)
     const urlToken = page.url().match(/access_token=([^&]+)/)
     if (urlToken) {
       shortLivedToken = urlToken[1]
@@ -157,38 +169,28 @@ export async function facebookLogin(email: string, password: string, requestCode
     }
 
     if (!shortLivedToken) {
-      // Need to login - fill credentials on the OAuth login form
       log('info', 'meta_api', 'fb_login: looking for email field')
 
-      let emailField = await page.waitForSelector('#email', { timeout: 10000 }).catch(() => null)
-      if (!emailField) {
-        emailField = await page.waitForSelector('input[name="email"]', { timeout: 5000 }).catch(() => null)
-      }
-      if (!emailField) {
-        const text = await page.evaluate("document.body?.innerText?.slice(0, 500) || ''") as string
-        log('warn', 'meta_api', 'fb_login: email field not found', { url: page.url(), title: await page.title(), text: text.slice(0, 200) })
-        return { success: false, error: 'Could not find email field on login page.' }
+      try {
+        await page.fill('#email', email)
+      } catch {
+        try {
+          await page.fill('input[name="email"]', email)
+        } catch {
+          const text = await page.evaluate("document.body?.innerText?.slice(0, 500) || ''") as string
+          log('warn', 'meta_api', 'fb_login: email field not found', { url: page.url(), title: await page.title(), text: text.slice(0, 200) })
+          return { success: false, error: 'Could not find email field on login page.' }
+        }
       }
       log('info', 'meta_api', 'fb_login: email field found')
-      await emailField.type(email, { delay: 40 })
 
-      let passField = await page.waitForSelector('#pass', { timeout: 5000 }).catch(() => null)
-      if (!passField) {
-        passField = await page.waitForSelector('input[name="pass"]', { timeout: 3000 }).catch(() => null)
-      }
-      if (passField) {
-        log('info', 'meta_api', 'fb_login: pass field found')
-        await passField.type(password, { delay: 40 })
-      }
+      await page.fill('#pass', password).catch(() => page.fill('input[name="pass"]', password).catch(() => {}))
 
       await new Promise(r => setTimeout(r, 500))
 
-      // Submit via Enter key
       log('info', 'meta_api', 'fb_login: pressing Enter to submit')
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {}),
-        page.keyboard.press('Enter'),
-      ])
+      await page.keyboard.press('Enter')
+      await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {})
 
       await new Promise(r => setTimeout(r, 3000))
       const urlAfterSubmit = page.url()
@@ -207,103 +209,30 @@ export async function facebookLogin(email: string, password: string, requestCode
             const instruction = await requestCode.get(page, currentUrl)
             await new Promise(r => setTimeout(r, 3000))
 
-            // Follow user instruction
             if (/try\s*(another|different)\s*way/.test(instruction.toLowerCase())) {
               log('info', 'meta_api', 'fb_login: clicking "Try another way"')
-              const btns = await page.$$('button, [role="button"], a[role="button"], div[role="button"]')
-              for (const b of btns) {
-                const t = await page.evaluate((el) => (el.textContent || '').trim().toLowerCase(), b).catch(() => '')
-                if (t.includes('try another way')) {
-                  await page.evaluate((el) => el.click(), b).catch(() => {})
-                  break
-                }
+              try {
+                await page.getByRole('button', { name: /try another way/i }).click()
+              } catch {
+                await page.getByText('Try another way', { exact: false }).click()
               }
               await new Promise(r => setTimeout(r, 3000))
 
-              // Check for radio buttons (different 2FA method options like WhatsApp, SMS, etc.)
-              const radios = await page.$$('input[type="radio"], [role="radio"]').catch(() => [] as any[])
-              if (radios.length > 0) {
-                log('info', 'meta_api', `fb_login: found ${radios.length} radio options, selecting the last one`)
-                // Click radio via proper MouseEvent dispatch (React may ignore .click())
-                await page.evaluate(`(function() {
-                  const radios = document.querySelectorAll('input[type="radio"], [role="radio"]');
-                  const last = radios[radios.length - 1];
-                  if (last) {
-                    last.scrollIntoView({ block: 'center' });
-                    last.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                  }
-                })()`)
+              const radioCount = await page.locator('input[type="radio"]').count()
+              if (radioCount > 0) {
+                log('info', 'meta_api', `fb_login: found ${radioCount} radio options, selecting the last one`)
+                await page.locator('input[type="radio"]').last().click()
                 await new Promise(r => setTimeout(r, 3000))
 
-                // Select last radio option (WhatsApp)
-                await page.evaluate(`(function() {
-                  const radios = document.querySelectorAll('input[type="radio"], [role="radio"]');
-                  const last = radios[radios.length - 1];
-                  if (last) {
-                    last.scrollIntoView({ block: 'center' });
-                    last.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                try {
+                  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+                } catch {
+                  try {
+                    await page.locator('button:has-text("Continue")').click()
+                  } catch {
+                    log('info', 'meta_api', 'fb_login: pressing Enter as last resort')
+                    await page.keyboard.press('Enter')
                   }
-                })()`)
-                await new Promise(r => setTimeout(r, 3000))
-
-                // Attempt to click "Continue" button with multiple strategies
-                let continueClicked = false
-
-                // Strategy 1: XPath via document.evaluate
-                const xpaths = [
-                  '//button[contains(., "Continue")]',
-                  '//button[contains(., "continue")]',
-                  '//*[self::button or self::a or @role="button"][contains(., "Continue")]',
-                  '//*[self::button or self::a or @role="button"][contains(., "continue")]',
-                  '//div[contains(@class, "continue") or contains(@class, "Continue")]',
-                  '//input[@type="submit"]',
-                ]
-                for (const xp of xpaths) {
-                  const found = await page.evaluate(`(function() {
-                    const xpath = ${JSON.stringify(xp)};
-                    const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                    const el = result.singleNodeValue;
-                    if (!el) return false;
-                    const r = el.getBoundingClientRect();
-                    if (r.width === 0 || r.height === 0) return false;
-                    el.scrollIntoView({ block: 'center' });
-                    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                    return true;
-                  })()`)
-                  if (found) {
-                    continueClicked = true
-                    log('info', 'meta_api', 'fb_login: clicked Continue via XPath', { xpath: xp })
-                    break
-                  }
-                }
-
-                // Strategy 2: text search via evaluate if XPath failed
-                if (!continueClicked) {
-                  log('info', 'meta_api', 'fb_login: XPath failed, trying evaluate + MouseEvent')
-                  const found = await page.evaluate(`(function() {
-                    const keywords = ['continue', 'next', 'send', 'confirm', 'ok'];
-                    const all = document.querySelectorAll('button, [role="button"], a[role="button"], input[type="submit"]');
-                    for (const el of all) {
-                      const text = (el.textContent || el.value || '').trim().toLowerCase();
-                      if (keywords.some(k => text === k || text.startsWith(k + ' ') || text.includes(k))) {
-                        el.scrollIntoView({ block: 'center' });
-                        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                        return true;
-                      }
-                    }
-                    return false;
-                  })()`)
-                  if (found) {
-                    continueClicked = true
-                    log('info', 'meta_api', 'fb_login: clicked Continue via evaluate')
-                  }
-                }
-
-                // Strategy 3: Enter key
-                if (!continueClicked) {
-                  log('info', 'meta_api', 'fb_login: pressing Enter as last resort')
-                  await page.keyboard.press('Enter')
-                  await new Promise(r => setTimeout(r, 2000))
                 }
                 await new Promise(r => setTimeout(r, 5000))
               }
@@ -312,10 +241,8 @@ export async function facebookLogin(email: string, password: string, requestCode
               await waitForConsent(page)
             }
 
-            // Take screenshot to show result
             await requestCode.screenshot(page, '📸 After clicking the button')
 
-            // If still on the same confirm page, send 3 screenshots 7s apart then error out
             if (is2FAConfirmPage(page.url())) {
               for (let i = 0; i < 3; i++) {
                 await new Promise(r => setTimeout(r, 7000))
@@ -346,7 +273,6 @@ export async function facebookLogin(email: string, password: string, requestCode
         }
       }
 
-      // Check for token after login
       const m = urlAfterSubmit.match(/access_token=([^&]+)/)
       if (m) shortLivedToken = m[1]
       if (!shortLivedToken) {
@@ -361,7 +287,6 @@ export async function facebookLogin(email: string, password: string, requestCode
     }
 
     if (!shortLivedToken) {
-      // Handle consent page (if redirected there after login)
       shortLivedToken = await waitForConsent(page)
     }
 
