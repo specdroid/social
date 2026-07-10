@@ -92,7 +92,15 @@ function is2FA(url: string): boolean {
   return url.includes('two_step_verification')
 }
 
-export async function facebookLogin(email: string, password: string, requestCode?: () => Promise<string>): Promise<LoginResult> {
+function is2FACodePage(url: string): boolean {
+  return url.includes('two_step_verification/authentication/') || url.includes('approvals_code')
+}
+
+function is2FAConfirmPage(url: string): boolean {
+  return url.includes('two_step_verification/two_factor/') && url.includes('flow=two_factor_login')
+}
+
+export async function facebookLogin(email: string, password: string, requestCode?: (currentUrl: string) => Promise<string>): Promise<LoginResult> {
   const appId = env.META_APP_ID
   const appSecret = env.META_APP_SECRET
 
@@ -180,17 +188,36 @@ export async function facebookLogin(email: string, password: string, requestCode
       log('info', 'meta_api', 'fb_login: after submit', { url: urlAfterSubmit, title: await page.title() })
 
       if (is2FA(urlAfterSubmit)) {
-        if (!requestCode) {
-          return { success: false, error: 'Two-factor authentication (2FA) is enabled. Include a 2FA code parameter or disable 2FA for automation.' }
+        if (is2FAConfirmPage(urlAfterSubmit)) {
+          if (!requestCode) {
+            return { success: false, error: 'Facebook sent a login confirmation to your phone. Approve it and retry.' }
+          }
+          log('info', 'meta_api', 'fb_login: waiting for phone confirmation')
+          await requestCode(urlAfterSubmit)
+          // Wait for user to confirm on phone, page will advance
+          for (let i = 0; i < 60; i++) {
+            await new Promise(r => setTimeout(r, 2000))
+            if (!is2FA(page.url())) break
+          }
+          if (is2FA(page.url())) {
+            return { success: false, error: 'Phone confirmation timed out.' }
+          }
+          log('info', 'meta_api', 'fb_login: phone confirmation received')
+        } else if (is2FACodePage(urlAfterSubmit)) {
+          if (!requestCode) {
+            return { success: false, error: 'Two-factor authentication code required.' }
+          }
+          log('info', 'meta_api', 'fb_login: requesting 2FA code')
+          const code = await requestCode(urlAfterSubmit)
+          log('info', 'meta_api', 'fb_login: code received, entering it')
+          const ok = await enter2FACode(page, code)
+          if (!ok) {
+            return { success: false, error: 'Invalid 2FA code.' }
+          }
+          log('info', 'meta_api', 'fb_login: 2FA passed')
+        } else {
+          return { success: false, error: `Unexpected 2FA page: ${urlAfterSubmit}` }
         }
-        log('info', 'meta_api', 'fb_login: detected 2FA page, requesting code')
-        const code = await requestCode()
-        log('info', 'meta_api', 'fb_login: code received, entering it')
-        const ok = await enter2FACode(page, code)
-        if (!ok) {
-          return { success: false, error: 'Invalid 2FA code.' }
-        }
-        log('info', 'meta_api', 'fb_login: 2FA passed')
       }
 
       // Check for token after login

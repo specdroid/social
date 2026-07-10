@@ -1579,12 +1579,16 @@ _Example:_ ws test welcome bot: hello
     await sock.sendMessage(sender, { text: '🔄 Logging into Facebook with browser automation... This may take up to 60 seconds.' })
     try {
       const normSender = normalizeJid(actualSender)
-      const result = await facebookLogin(fbEmail, fbPassword, async () => {
-        await sock.sendMessage(sender, { text: '📱 *2FA code required.*\n\nCheck your WhatsApp for the Facebook login code and send it here as a reply (6 digits).' })
+      const result = await facebookLogin(fbEmail, fbPassword, async (url) => {
+        if (url.includes('flow=two_factor_login')) {
+          await sock.sendMessage(sender, { text: '📱 *Check your phone.* Facebook sent a login confirmation notification. Tap "Yes, that was me" on your phone.' })
+          return ''
+        }
+        await sock.sendMessage(sender, { text: '📱 *2FA code required.* Send the 6-digit code from your authenticator app here.' })
         return new Promise<string>((resolve, reject) => {
           const timeout = setTimeout(() => {
             pending2FA.delete(normSender)
-            reject(new Error('⏰ 2FA code timed out (2 minutes). Run `ws fb login` again when you have a code ready.'))
+            reject(new Error('⏰ 2FA code timed out (2 minutes). Run `ws fb login` again.'))
           }, 120000)
           pending2FA.set(normSender, { resolve, reject, timeout })
         })
