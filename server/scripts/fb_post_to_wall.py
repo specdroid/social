@@ -85,9 +85,12 @@ def main():
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
 
-    profile_dir = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'fb_profile'))
-    if os.path.isdir(profile_dir):
+    profile_dir = '/tmp/fb_profile'
+    try:
+        os.makedirs(profile_dir, exist_ok=True)
         options.add_argument(f'--user-data-dir={profile_dir}')
+    except Exception:
+        pass
 
     driver = None
     try:
@@ -130,49 +133,49 @@ def main():
             json.dump(dump, open('/tmp/fb_cont_debug2.json', 'w'), indent=2)
             # Try to click based on findings
             if dump.get('exactCount', 0) > 0:
-                el = dump['exact'][0]
                 driver.execute_script("""
                     const all = [...document.querySelectorAll('*')]
                         .filter(e => e.textContent.trim() === 'Continue');
-                    if (all.length > 0) {
-                        let el = all[0];
-                        while (el && el !== document.body) {
-                            const role = el.getAttribute('role');
-                            const tag = el.tagName.toLowerCase();
-                            if (role === 'button' || role === 'link' || tag === 'button' || tag === 'a') {
-                                el.click();
+                    // Click the FIRST element that is itself a button or has role="button"
+                    for (const el of all) {
+                        const role = el.getAttribute('role');
+                        if (role === 'button' || el.tagName === 'BUTTON' || el.tagName === 'A') {
+                            el.click();
+                            return;
+                        }
+                    }
+                    // Fallback: walk up from each element
+                    for (const el of all) {
+                        let parent = el.parentElement;
+                        while (parent && parent !== document.body) {
+                            const role = parent.getAttribute('role');
+                            if (role === 'button' || parent.tagName === 'BUTTON' || parent.tagName === 'A') {
+                                parent.click();
                                 return;
                             }
-                            el = el.parentElement;
+                            parent = parent.parentElement;
                         }
-                        all[0].click();
+                    }
+                    // Last resort: click first visible Continue element
+                    for (const el of all) {
+                        if (el.offsetParent !== null) {
+                            el.click();
+                            return;
+                        }
                     }
                 """)
                 time.sleep(3)
             else:
-                # No element with exact "Continue" text; try clicking any role=button in login area
+                # Fallback: try clicking the first visible button in the login area
                 driver.execute_script("""
                     const btns = [...document.querySelectorAll('[role="button"]')]
                         .filter(e => e.offsetParent !== null && e.textContent.trim().length > 0);
-                    if (btns.length > 0) {
-                        btns[0].click();
+                    for (const btn of btns) {
+                        btn.click();
+                        break;
                     }
                 """)
-                time.sleep(2)
-                driver.execute_script("""
-                    const btns = [...document.querySelectorAll('[role="button"]')]
-                        .filter(e => e.offsetParent !== null && e.textContent.trim().length > 0);
-                    if (btns.length > 0) {
-                        btns[0].click();
-                    }
-                """)
-                time.sleep(2)
-        except Exception:
-            pass
-        # Navigate again to bypass dialog
-        try:
-            driver.get('https://www.facebook.com/')
-            time.sleep(5)
+                time.sleep(3)
         except Exception:
             pass
 
