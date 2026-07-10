@@ -173,12 +173,21 @@ export function createApp(): express.Application {
     res.json({ installed: exists })
   })
 
-  app.post('/api/fb-setup/upload', fbUpload.single('cookies'), (req, res) => {
-    if (!req.file) {
-      res.status(400).json({ success: false, error: 'No file uploaded' })
-      return
-    }
-    res.json({ success: true })
+  app.post('/api/fb-setup/upload', (req, res, next) => {
+    console.log('[fb-upload] POST /api/fb-setup/upload hit, content-type:', req.headers['content-type'])
+    fbUpload.single('cookies')(req, res, (err) => {
+      if (err) {
+        console.error('[fb-upload] multer error:', err)
+        res.status(400).json({ success: false, error: err.message })
+        return
+      }
+      console.log('[fb-upload] req.file:', req.file ? 'present' : 'missing')
+      if (!req.file) {
+        res.status(400).json({ success: false, error: 'No file uploaded' })
+        return
+      }
+      res.json({ success: true })
+    })
   })
 
   app.use(errorHandler)

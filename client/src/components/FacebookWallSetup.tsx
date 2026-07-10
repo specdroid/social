@@ -37,8 +37,12 @@ export function FacebookWallSetup() {
     const fd = new FormData()
     fd.append('cookies', file)
     try {
+      console.log('[fb-wall] uploading file:', file.name, file.size)
       const r = await fetch(`${API}/api/fb-setup/upload`, { method: 'POST', body: fd })
-      const d = await r.json()
+      console.log('[fb-wall] response status:', r.status)
+      const text = await r.text()
+      console.log('[fb-wall] response body:', text)
+      const d = JSON.parse(text)
       if (d.success) {
         setInstalled(true)
         setMsg({ type: 'success', text: 'Cookies uploaded! You can now use fb: commands.' })
@@ -46,8 +50,9 @@ export function FacebookWallSetup() {
       } else {
         setMsg({ type: 'error', text: d.error || 'Upload failed' })
       }
-    } catch {
-      setMsg({ type: 'error', text: 'Network error' })
+    } catch (e) {
+      console.error('[fb-wall] fetch error:', e)
+      setMsg({ type: 'error', text: 'Network error: ' + (e as Error).message })
     }
     setUploading(false)
   }
