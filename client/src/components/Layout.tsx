@@ -25,14 +25,18 @@ const navItems = [
   { path: '/help', label: 'Help', icon: HelpCircle },
 ]
 
-export function Layout({ children }: { children: ReactNode }) {
+export function Layout({ children, onLogout }: { children: ReactNode; onLogout?: () => void }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const handleLogout = () => {
     localStorage.removeItem('token')
-    window.location.reload()
+    if (onLogout) {
+      onLogout()
+    } else {
+      window.location.reload()
+    }
   }
 
   const handleNav = (path: string) => {

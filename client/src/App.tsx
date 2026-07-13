@@ -10,7 +10,7 @@ import { Help } from './pages/Help'
 import { Omniroute } from './pages/Omniroute'
 import { Telegram } from './pages/Telegram'
 
-function LoginPage() {
+function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -40,7 +40,7 @@ function LoginPage() {
       }
 
       localStorage.setItem('token', data.token)
-      window.location.href = '/dashboard'
+      onLogin(data.token)
     } catch {
       setError('Failed to connect to server')
     }
@@ -114,23 +114,23 @@ function LoginPage() {
 }
 
 export default function App() {
-  const token = localStorage.getItem('token')
+  const [token, setToken] = useState(() => localStorage.getItem('token'))
 
   if (!token) {
-    return <LoginPage />
+    return <LoginPage onLogin={(t) => setToken(t)} />
   }
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
-        <Route path="/automation" element={<Layout><Automation /></Layout>} />
-        <Route path="/whatsapp" element={<Layout><WhatsApp /></Layout>} />
-        <Route path="/facebook" element={<Layout><Facebook /></Layout>} />
-        <Route path="/billing" element={<Layout><Billing /></Layout>} />
-        <Route path="/help" element={<Layout><Help /></Layout>} />
-        <Route path="/omniroute" element={<Layout><Omniroute /></Layout>} />
-        <Route path="/telegram" element={<Layout><Telegram /></Layout>} />
+        <Route path="/dashboard" element={<Layout onLogout={() => setToken(null)}><Dashboard /></Layout>} />
+        <Route path="/automation" element={<Layout onLogout={() => setToken(null)}><Automation /></Layout>} />
+        <Route path="/whatsapp" element={<Layout onLogout={() => setToken(null)}><WhatsApp /></Layout>} />
+        <Route path="/facebook" element={<Layout onLogout={() => setToken(null)}><Facebook /></Layout>} />
+        <Route path="/billing" element={<Layout onLogout={() => setToken(null)}><Billing /></Layout>} />
+        <Route path="/help" element={<Layout onLogout={() => setToken(null)}><Help /></Layout>} />
+        <Route path="/omniroute" element={<Layout onLogout={() => setToken(null)}><Omniroute /></Layout>} />
+        <Route path="/telegram" element={<Layout onLogout={() => setToken(null)}><Telegram /></Layout>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
