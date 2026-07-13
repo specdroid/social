@@ -14,6 +14,7 @@ interface DialogInfo {
   lastMessage: string | null
   date: string | null
   phone?: string
+  canSend: boolean
 }
 
 interface MessageInfo {
@@ -39,6 +40,7 @@ export function TelegramChat({ onDisconnect, phone }: { onDisconnect: () => void
   const chatEnd = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const selectedDialog = dialogs.find((d) => d.id === selectedId) || null
   const filteredDialogs = dialogs.filter(
     (d) => d.name.toLowerCase().includes(search.toLowerCase()) || d.phone?.includes(search)
   )
@@ -238,36 +240,42 @@ export function TelegramChat({ onDisconnect, phone }: { onDisconnect: () => void
                 <div ref={chatEnd} />
               </div>
 
-              <div className="p-3 border-t border-zinc-800 flex gap-2 items-center">
-                <input
-                  type="file"
-                  ref={fileRef}
-                  onChange={handleFile}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  disabled={sending}
-                  className="p-2 text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
-                >
-                  <Paperclip className="w-5 h-5" />
-                </button>
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                  className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 text-sm focus:outline-none focus:border-zinc-500"
-                  placeholder="Type a message..."
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={!chatInput.trim() || sending}
-                  className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-50"
-                >
-                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                </button>
-              </div>
+              {selectedDialog && !selectedDialog.canSend ? (
+                <div className="p-3 border-t border-zinc-800 text-center text-xs text-zinc-500">
+                  Read-only — you are not an admin of this channel
+                </div>
+              ) : (
+                <div className="p-3 border-t border-zinc-800 flex gap-2 items-center">
+                  <input
+                    type="file"
+                    ref={fileRef}
+                    onChange={handleFile}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileRef.current?.click()}
+                    disabled={sending}
+                    className="p-2 text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                    className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 text-sm focus:outline-none focus:border-zinc-500"
+                    placeholder="Type a message..."
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={!chatInput.trim() || sending}
+                    className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-50"
+                  >
+                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

@@ -29,6 +29,7 @@ export interface DialogInfo {
   lastMessage: string | null
   date: string | null
   phone?: string
+  canSend: boolean
 }
 
 export interface MessageInfo {
@@ -237,15 +238,21 @@ export async function getDialogs(): Promise<DialogInfo[]> {
   await ensureReady()
   const c = getClient()
   const dialogs = await c.getDialogs({ limit: 100 })
-  return dialogs.map((d) => ({
-    id: d.id?.toString() || '',
-    name: d.name || d.title || 'Unknown',
-    type: d.isUser ? 'user' : d.isGroup ? 'group' : 'channel',
-    unreadCount: d.unreadCount,
-    lastMessage: d.message?.message || null,
-    date: d.message?.date ? new Date((d.message.date) * 1000).toISOString() : null,
-    phone: (d.entity as any)?.phone || undefined,
-  }))
+  return dialogs.map((d) => {
+    const entity = d.entity as any
+    const isChannel = entity?.className === 'Channel'
+    const canSend = !isChannel || entity?.adminRights || entity?.creator
+    return {
+      id: d.id?.toString() || '',
+      name: d.name || d.title || 'Unknown',
+      type: d.isUser ? 'user' : d.isGroup ? 'group' : 'channel',
+      unreadCount: d.unreadCount,
+      lastMessage: d.message?.message || null,
+      date: d.message?.date ? new Date((d.message.date) * 1000).toISOString() : null,
+      phone: entity?.phone || undefined,
+      canSend: !!canSend,
+    }
+  })
 }
 
 export async function getMessages(chatId: string, limit = 50): Promise<MessageInfo[]> {
