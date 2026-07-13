@@ -8,6 +8,7 @@ import { Facebook } from './pages/Facebook'
 import { Billing } from './pages/Billing'
 import { Help } from './pages/Help'
 import { Omniroute } from './pages/Omniroute'
+import { Telegram } from './pages/Telegram'
 
 function LoginPage() {
   const [email, setEmail] = useState('')
@@ -184,6 +185,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Layout><Omniroute /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/telegram"
+          element={
+            <ProtectedRoute>
+              <Layout><Telegram /></Layout>
             </ProtectedRoute>
           }
         />

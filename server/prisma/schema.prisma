@@ -179,3 +179,12 @@ model OmnirouteConfig {
   systemPrompt String   @default("")
   updatedAt    DateTime @updatedAt
 }
+
+model TelegramSession {
+  id         String   @id @default(cuid())
+  session    String   @default("")
+  phone      String?
+  isLoggedIn Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

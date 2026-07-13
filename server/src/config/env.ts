@@ -20,6 +20,9 @@ const envSchema = z.object({
   STRIPE_PRICE_ID: z.string().default(''),
   STRIPE_SUCCESS_URL: z.string().default('http://localhost:5173/billing?success=true'),
   STRIPE_CANCEL_URL: z.string().default('http://localhost:5173/billing?canceled=true'),
+
+  TELEGRAM_API_ID: z.coerce.number().default(0),
+  TELEGRAM_API_HASH: z.string().default(''),
 })
 
 const parsed = envSchema.safeParse(process.env)
