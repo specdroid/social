@@ -29,6 +29,7 @@ export async function chatCompletion(messages: { role: string; content: string }
 
   const body: any = {
     model: config.model || 'auto/coding:free',
+    stream: false,
     messages: [],
   }
 
@@ -47,11 +48,24 @@ export async function chatCompletion(messages: { role: string; content: string }
     body: JSON.stringify(body),
   })
 
+  const resText = await response.text()
   if (!response.ok) {
-    const errText = await response.text().catch(() => '')
-    throw new Error(`Omniroute API error ${response.status}: ${errText.slice(0, 200)}`)
+    throw new Error(`Omniroute API error ${response.status}: ${resText.slice(0, 200)}`)
   }
 
-  const data = await response.json() as any
+  // Handle SSE streaming response (NDJSON lines)
+  if (resText.startsWith('data: ') || resText.includes('\ndata: ')) {
+    const lines = resText.split('\n').filter(l => l.startsWith('data: ') && l !== 'data: [DONE]')
+    let fullContent = ''
+    for (const line of lines) {
+      try {
+        const parsed = JSON.parse(line.slice(6))
+        fullContent += parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || ''
+      } catch { }
+    }
+    return fullContent
+  }
+
+  const data = JSON.parse(resText) as any
   return data.choices?.[0]?.message?.content || ''
 }
