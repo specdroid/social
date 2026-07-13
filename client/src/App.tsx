@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Layout } from './components/Layout'
 import { Dashboard } from './pages/Dashboard'
 import { Automation } from './pages/Automation'
@@ -113,89 +113,24 @@ function LoginPage() {
   )
 }
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const token = localStorage.getItem('token')
-  if (!token) return <Navigate to="/login" replace />
-  return <>{children}</>
-}
-
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'))
+  const token = localStorage.getItem('token')
 
-  useEffect(() => {
-    const check = () => setIsAuthenticated(!!localStorage.getItem('token'))
-    window.addEventListener('storage', check)
-    return () => window.removeEventListener('storage', check)
-  }, [])
+  if (!token) {
+    return <LoginPage />
+  }
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Layout><Dashboard /></Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/automation"
-          element={
-            <ProtectedRoute>
-              <Layout><Automation /></Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/whatsapp"
-          element={
-            <ProtectedRoute>
-              <Layout><WhatsApp /></Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/facebook"
-          element={
-            <ProtectedRoute>
-              <Layout><Facebook /></Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/billing"
-          element={
-            <ProtectedRoute>
-              <Layout><Billing /></Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/help"
-          element={
-            <ProtectedRoute>
-              <Layout><Help /></Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/omniroute"
-          element={
-            <ProtectedRoute>
-              <Layout><Omniroute /></Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/telegram"
-          element={
-            <ProtectedRoute>
-              <Layout><Telegram /></Layout>
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
+        <Route path="/automation" element={<Layout><Automation /></Layout>} />
+        <Route path="/whatsapp" element={<Layout><WhatsApp /></Layout>} />
+        <Route path="/facebook" element={<Layout><Facebook /></Layout>} />
+        <Route path="/billing" element={<Layout><Billing /></Layout>} />
+        <Route path="/help" element={<Layout><Help /></Layout>} />
+        <Route path="/omniroute" element={<Layout><Omniroute /></Layout>} />
+        <Route path="/telegram" element={<Layout><Telegram /></Layout>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
