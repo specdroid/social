@@ -120,12 +120,21 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  console.log('[APP] render, token:', !!localStorage.getItem('token'))
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'))
 
   useEffect(() => {
-    const check = () => setIsAuthenticated(!!localStorage.getItem('token'))
+    console.log('[APP] useEffect mounted, isAuthenticated:', isAuthenticated)
+    const check = () => {
+      const hasToken = !!localStorage.getItem('token')
+      console.log('[APP] storage event fired, hasToken:', hasToken)
+      setIsAuthenticated(hasToken)
+    }
     window.addEventListener('storage', check)
-    return () => window.removeEventListener('storage', check)
+    return () => {
+      console.log('[APP] useEffect cleanup')
+      window.removeEventListener('storage', check)
+    }
   }, [])
 
   return (

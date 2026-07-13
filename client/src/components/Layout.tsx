@@ -31,8 +31,11 @@ export function Layout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const handleLogout = () => {
+    console.log('[LOGOUT] handleLogout called')
     localStorage.removeItem('token')
+    console.log('[LOGOUT] token removed, dispatching storage event')
     window.dispatchEvent(new Event('storage'))
+    console.log('[LOGOUT] navigating to /login')
     navigate('/login', { replace: true })
   }
 
