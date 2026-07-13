@@ -1,5 +1,40 @@
+import { useState, useEffect, useCallback } from 'react'
 import { TelegramLogin } from '../components/TelegramLogin'
+import { TelegramChat } from '../components/TelegramChat'
+import { useApi } from '../hooks/useApi'
+
+interface TelegramStatus {
+  connected: boolean
+  phone: string | null
+}
 
 export function Telegram() {
-  return <TelegramLogin />
+  const { get } = useApi()
+  const [status, setStatus] = useState<TelegramStatus>({ connected: false, phone: null })
+  const [loading, setLoading] = useState(true)
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const data = await get<TelegramStatus>('/api/telegram/status')
+      setStatus(data)
+    } catch {
+      setStatus({ connected: false, phone: null })
+    } finally {
+      setLoading(false)
+    }
+  }, [get])
+
+  useEffect(() => {
+    fetchStatus()
+  }, [fetchStatus])
+
+  if (loading) {
+    return <div className="text-zinc-400 text-sm">Loading...</div>
+  }
+
+  if (!status.connected) {
+    return <TelegramLogin onLogin={fetchStatus} />
+  }
+
+  return <TelegramChat onDisconnect={fetchStatus} phone={status.phone} />
 }

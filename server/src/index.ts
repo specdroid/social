@@ -4,6 +4,7 @@ import { createApp } from './app'
 import { env } from './config/env'
 import { setupWebSocket } from './websocket/whatsappSocket'
 import { initWhatsAppBot, cleanupAuthFolder } from './services/whatsappBot'
+import { setSocketIO as setTelegramIO } from './services/telegramClient'
 import { startContentScheduler } from './services/contentScheduler'
 import { processRetryQueue } from './services/retryQueue'
 import { log } from './utils/logger'
@@ -28,6 +29,7 @@ async function main(): Promise<void> {
   const httpServer = http.createServer(app)
 
   const io = setupWebSocket(httpServer)
+  setTelegramIO(io)
 
   if (env.WA_ENABLED) {
     log('info', 'system', 'WhatsApp bot enabled. Waiting for user to click "Connect WhatsApp".')

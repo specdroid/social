@@ -4,6 +4,9 @@ import { Api } from 'telegram'
 import { computeCheck } from 'telegram/Password'
 import { env } from '../config/env'
 import { PrismaClient } from '@prisma/client'
+import { Server as SocketIOServer } from 'socket.io'
+import fs from 'fs'
+import { log } from '../utils/logger'
 
 const prisma = new PrismaClient()
 
@@ -11,10 +14,30 @@ let client: TelegramClient | null = null
 let stringSession: StringSession | null = null
 let loginPhone = ''
 let loginPhoneCodeHash = ''
+let io: SocketIOServer | null = null
 
 export interface TelegramStatus {
   connected: boolean
   phone: string | null
+}
+
+export interface DialogInfo {
+  id: string
+  name: string
+  type: 'user' | 'group' | 'channel'
+  unreadCount: number
+  lastMessage: string | null
+  date: string | null
+  phone?: string
+}
+
+export interface MessageInfo {
+  id: number
+  fromId: string
+  text: string
+  date: string
+  out: boolean
+  media: { type: string; caption?: string } | null
 }
 
 function getClient(): TelegramClient {
@@ -50,6 +73,50 @@ async function clearSession() {
   await prisma.telegramSession.deleteMany()
 }
 
+export function setSocketIO(serverIo: SocketIOServer) {
+  io = serverIo
+}
+
+function setupEventHandlers() {
+  if (!client || !io) return
+  client.addEventHandler((update: any) => {
+    let message: any
+    if (update instanceof Api.UpdateNewMessage) {
+      message = update.message
+    } else if (update instanceof Api.UpdateNewChannelMessage) {
+      message = update.message
+    } else {
+      return
+    }
+    if (!message) return
+    const chatId = message.peerId?.userId?.toString()
+      || message.peerId?.channelId?.toString()
+      || message.peerId?.chatId?.toString()
+      || message.chatId?.toString()
+    if (!chatId || !client) return
+    ; (async () => {
+      try {
+        const me = await client!.getMe()
+        const senderId = message.fromId?.userId?.toString()
+          || message.fromId?.channelId?.toString()
+          || message.fromId?.toString()
+        const isOut = message.out || (senderId === me?.id?.toString())
+        const msgInfo: MessageInfo = {
+          id: message.id,
+          fromId: isOut ? 'me' : (senderId || ''),
+          text: message.message || '',
+          date: new Date((message.date || 0) * 1000).toISOString(),
+          out: isOut,
+          media: message.media
+            ? { type: message.media.className || 'unknown', caption: message.message || undefined }
+            : null,
+        }
+        io?.emit('telegram:message', { chatId, message: msgInfo })
+      } catch { /* ignore */ }
+    })()
+  })
+}
+
 export async function initClient(): Promise<void> {
   if (client) return
   const sessionStr = await loadSession()
@@ -60,6 +127,17 @@ export async function initClient(): Promise<void> {
   await client.connect()
 }
 
+async function ensureReady() {
+  await initClient()
+  const c = getClient()
+  try {
+    await c.invoke(new Api.updates.GetState())
+    setupEventHandlers()
+  } catch {
+    throw new Error('Telegram not authorised')
+  }
+}
+
 export async function sendCode(phone: string): Promise<void> {
   await initClient()
   const c = getClient()
@@ -68,6 +146,7 @@ export async function sendCode(phone: string): Promise<void> {
     await c.invoke(new Api.updates.GetState())
     const me = await c.getMe()
     await saveSession(me?.phone || phone)
+    setupEventHandlers()
     return
   } catch {
     // Not authorised – continue with phone login
@@ -103,6 +182,7 @@ export async function signIn(code: string): Promise<{ success: boolean; password
 
     const me = await c.getMe()
     await saveSession(me?.phone || loginPhone)
+    setupEventHandlers()
     loginPhone = ''
     loginPhoneCodeHash = ''
     return { success: true, passwordNeeded: false }
@@ -123,6 +203,7 @@ export async function checkPassword(password: string): Promise<void> {
 
   const me = await c.getMe()
   await saveSession(me?.phone || loginPhone)
+  setupEventHandlers()
   loginPhone = ''
   loginPhoneCodeHash = ''
 }
@@ -133,6 +214,7 @@ export async function getStatus(): Promise<TelegramStatus> {
     const c = getClient()
     await c.invoke(new Api.updates.GetState())
     const me = await c.getMe()
+    setupEventHandlers()
     return { connected: true, phone: me?.phone || null }
   } catch {
     return { connected: false, phone: null }
@@ -149,4 +231,63 @@ export async function disconnectClient(): Promise<void> {
   loginPhone = ''
   loginPhoneCodeHash = ''
   await clearSession()
+}
+
+export async function getDialogs(): Promise<DialogInfo[]> {
+  await ensureReady()
+  const c = getClient()
+  const dialogs = await c.getDialogs({ limit: 100 })
+  return dialogs.map((d) => ({
+    id: d.id?.toString() || '',
+    name: d.name || d.title || 'Unknown',
+    type: d.isUser ? 'user' : d.isGroup ? 'group' : 'channel',
+    unreadCount: d.unreadCount,
+    lastMessage: d.message?.message || null,
+    date: d.message?.date ? new Date((d.message.date) * 1000).toISOString() : null,
+    phone: (d.entity as any)?.phone || undefined,
+  }))
+}
+
+export async function getMessages(chatId: string, limit = 50): Promise<MessageInfo[]> {
+  await ensureReady()
+  const c = getClient()
+  const peerId = Number(chatId)
+  const messages = await c.getMessages(peerId, { limit })
+  const me = await c.getMe()
+  const myId = me?.id?.toString()
+  return messages.map((m) => {
+    const senderId = (m.fromId as any)?.userId?.toString()
+      || (m.fromId as any)?.channelId?.toString()
+      || (m.fromId as any)?.toString()
+      || ''
+    const isOut = m.out || senderId === myId
+    return {
+      id: m.id,
+      fromId: isOut ? 'me' : senderId,
+      text: m.message || '',
+      date: new Date((m.date || 0) * 1000).toISOString(),
+      out: isOut,
+      media: m.media
+        ? { type: m.media.className || 'unknown', caption: m.message || undefined }
+        : null,
+    }
+  }).reverse()
+}
+
+export async function sendMessage(chatId: string, text: string): Promise<void> {
+  await ensureReady()
+  const c = getClient()
+  const peerId = Number(chatId)
+  await c.sendMessage(peerId, { message: text })
+}
+
+export async function sendMedia(chatId: string, filePath: string, caption?: string): Promise<void> {
+  await ensureReady()
+  const c = getClient()
+  const peerId = Number(chatId)
+  try {
+    await c.sendFile(peerId, { file: filePath, caption })
+  } finally {
+    try { fs.unlinkSync(filePath) } catch { /* ignore */ }
+  }
 }
