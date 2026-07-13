@@ -1812,7 +1812,7 @@ ${baseUrl}/facebook`,
           const date = showTime ? new Date(m.date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) + ' ' : ''
           const senderInfo = m.out ? 'Me' : m.fromId.slice(0, 6)
           const mediaInfo = m.media ? ` [${m.media.type}]` : ''
-          return `${date}${senderInfo}: ${m.text || '(no text)'}${mediaInfo}`
+          return `• ${date}${senderInfo}: ${m.text || '(no text)'}${mediaInfo}`
         })
         const header = `💬 *${channel.name}* (${msgs.length} messages)\n\n`
         const full = header + lines.join('\n')
@@ -1973,7 +1973,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
                 const date = showTime ? new Date(m.date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) + ' ' : ''
                 const senderInfo = m.out ? 'Me' : m.fromId.slice(0, 6)
                 const mediaInfo = m.media ? ` [${m.media.type}]` : ''
-                return `${date}${senderInfo}: ${m.text || '(no text)'}${mediaInfo}`
+                return `• ${date}${senderInfo}: ${m.text || '(no text)'}${mediaInfo}`
               })
               const header = `💬 *${chosen.name}* (${msgs.length} messages)\n\n`
               const full = header + lines.join('\n')
