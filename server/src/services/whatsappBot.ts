@@ -27,7 +27,7 @@ const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
 let io: SocketIOServer | null = null
 let currentSocket: WASocket | null = null
 let isStarting = false
-const pendingChannelSelection = new Map<string, Array<{ name: string; id: string }>>()
+const pendingChannelSelection = new Map<string, { options: Array<{ name: string; id: string }>; limit: number }>()
 let reconnectAttempts = 0
 let stopReconnecting = false
 let latestQrDataUrl: string | null = null
@@ -1783,10 +1783,11 @@ ${baseUrl}/facebook`,
     return true
   }
 
-  // ── tel get <channel> chat ── fetch messages from a channel ──
-  const telGetChatMatch = textContent.match(/^tel\s+get\s+(.+?)\s+chat$/is)
+  // ── tel get <channel> chat [limit] ── fetch messages from a channel ──
+  const telGetChatMatch = textContent.match(/^tel\s+get\s+(.+?)\s+chat\s*(\d+)?$/is)
   if (telGetChatMatch) {
     const channelName = telGetChatMatch[1].trim()
+    const limit = telGetChatMatch[2] ? parseInt(telGetChatMatch[2], 10) : 15
     try {
       const dialogs = await getDialogs()
       const lowerQuery = channelName.toLowerCase()
@@ -1798,11 +1799,11 @@ ${baseUrl}/facebook`,
       if (matches.length > 1) {
         const lines = matches.map((d, i) => `${i + 1}. *${d.name}*${d.canSend ? '' : ' 🔇 (read-only)'}`)
         await sock.sendMessage(sender, { text: `🔍 Multiple channels match "${channelName}":\n\n${lines.join('\n')}\n\nReply with the number.` })
-        pendingChannelSelection.set(actualSender, matches.map((d) => ({ name: d.name, id: d.id })))
+        pendingChannelSelection.set(actualSender, { options: matches.map((d) => ({ name: d.name, id: d.id })), limit })
         return true
       }
       const channel = matches[0]
-      const msgs = await getMessages(channel.id, 100)
+      const msgs = await getMessages(channel.id, limit)
       if (msgs.length === 0) {
         await sock.sendMessage(sender, { text: `📭 No messages in *${channel.name}*.` })
       } else {
@@ -1957,12 +1958,13 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       const trimmedNum = textContent.trim()
       const num = parseInt(trimmedNum, 10)
       if (!isNaN(num) && pendingChannelSelection.has(actualSender)) {
-        const options = pendingChannelSelection.get(actualSender)!
-        if (num >= 1 && num <= options.length) {
+        const pending = pendingChannelSelection.get(actualSender)!
+        if (num >= 1 && num <= pending.options.length) {
+          const { options, limit } = pending
           pendingChannelSelection.delete(actualSender)
           const chosen = options[num - 1]
           try {
-            const msgs = await getMessages(chosen.id, 100)
+            const msgs = await getMessages(chosen.id, limit)
             if (msgs.length === 0) {
               await sock.sendMessage(sender, { text: `📭 No messages in *${chosen.name}*.` })
             } else {
