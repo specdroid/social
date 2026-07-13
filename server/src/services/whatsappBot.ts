@@ -1697,6 +1697,36 @@ ${baseUrl}/facebook`,
     return true
   }
 
+  // ── tel get contacts ── list all synced Telegram contacts ──
+  if (/^tel\s+get\s+contacts$/i.test(textContent.trim())) {
+    try {
+      const contacts = await prisma.telegramContact.findMany({ orderBy: { name: 'asc' } })
+      if (contacts.length === 0) {
+        await sock.sendMessage(sender, { text: '📇 No Telegram contacts synced yet. Use the Sync button on the Telegram page first.' })
+      } else {
+        const lines = contacts.map((c) => `👤 *${c.name}*${c.phone ? ` (${c.phone})` : ''}${c.username ? ` @${c.username}` : ''}`)
+        const chunks: string[] = []
+        let chunk = `📇 *Telegram Contacts (${contacts.length})*\n\n`
+        for (const line of lines) {
+          if ((chunk + '\n' + line).length > 4000) {
+            chunks.push(chunk)
+            chunk = line + '\n'
+          } else {
+            chunk += line + '\n'
+          }
+        }
+        chunk = chunk.trim()
+        if (chunk) chunks.push(chunk)
+        for (const msg of chunks) {
+          await sock.sendMessage(sender, { text: msg })
+        }
+      }
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ Error: ${(err as Error).message}` })
+    }
+    return true
+  }
+
   // ── tel send <contact> : <message> ── send Telegram message via MTProto ──
   const telSendMatch = textContent.match(/^tel\s+send\s+(.+?)\s*:\s*(.*)/is)
   if (telSendMatch) {

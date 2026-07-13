@@ -247,6 +247,10 @@ export function TelegramChat({ onDisconnect, phone }: { onDisconnect: () => void
               ))
             )}
           </div>
+          <div className="p-2 border-t border-zinc-800 flex justify-between text-[11px] text-zinc-500">
+            <span>{dialogs.length} conversations</span>
+            <span>{dialogs.filter((d) => d.type === 'user').length} contacts</span>
+          </div>
         </div>
 
         {/* ── Right panel: chat ── */}
