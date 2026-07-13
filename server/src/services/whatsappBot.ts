@@ -1783,8 +1783,8 @@ ${baseUrl}/facebook`,
     return true
   }
 
-  // ── tel get <channel> chat [limit] ── fetch messages from a channel ──
-  const telGetChatMatch = textContent.match(/^tel\s+get\s+(.+?)\s+chat\s*(\d+)?$/is)
+  // ── tel get <name> [limit] ── fetch messages from a matching channel ──
+  const telGetChatMatch = textContent.match(/^tel\s+get\s+(.+?)(?:\s+(\d+))?$/is)
   if (telGetChatMatch) {
     const channelName = telGetChatMatch[1].trim()
     const limit = telGetChatMatch[2] ? parseInt(telGetChatMatch[2], 10) : 15
