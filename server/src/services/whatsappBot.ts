@@ -27,6 +27,7 @@ const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
 let io: SocketIOServer | null = null
 let currentSocket: WASocket | null = null
 let isStarting = false
+const pendingChannelSelection = new Map<string, Array<{ name: string; id: string }>>()
 let reconnectAttempts = 0
 let stopReconnecting = false
 let latestQrDataUrl: string | null = null
@@ -1788,16 +1789,23 @@ ${baseUrl}/facebook`,
     const channelName = telGetChatMatch[1].trim()
     try {
       const dialogs = await getDialogs()
-      const channel = dialogs.find((d) => d.name.toLowerCase() === channelName.toLowerCase())
-      if (!channel) {
-        await sock.sendMessage(sender, { text: `❌ Channel "${channelName}" not found. Use \`tel get channels\` to list them.` })
+      const lowerQuery = channelName.toLowerCase()
+      const matches = dialogs.filter((d) => d.name.toLowerCase().includes(lowerQuery) && d.type === 'channel')
+      if (matches.length === 0) {
+        await sock.sendMessage(sender, { text: `❌ No channel matches "${channelName}". Use \`tel get channels\` to list them.` })
         return true
       }
-      const msgs = await getMessages(channel.id, 50)
+      if (matches.length > 1) {
+        const lines = matches.map((d, i) => `${i + 1}. *${d.name}*${d.canSend ? '' : ' 🔇 (read-only)'}`)
+        await sock.sendMessage(sender, { text: `🔍 Multiple channels match "${channelName}":\n\n${lines.join('\n')}\n\nReply with the number.` })
+        pendingChannelSelection.set(actualSender, matches.map((d) => ({ name: d.name, id: d.id })))
+        return true
+      }
+      const channel = matches[0]
+      const msgs = await getMessages(channel.id, 100)
       if (msgs.length === 0) {
         await sock.sendMessage(sender, { text: `📭 No messages in *${channel.name}*.` })
       } else {
-        const isChannel = channel.type === 'channel'
         const lines = msgs.map((m) => {
           const date = new Date(m.date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })
           const senderInfo = m.out ? 'Me' : m.fromId.slice(0, 6)
@@ -1944,6 +1952,51 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
     if (message.key.fromMe) {
       const normSender = normalizeJid(actualSender)
       if (normSender !== ownPhone && normSender !== ownLid) return
+
+      // ── Check pending channel selection reply ──
+      const trimmedNum = textContent.trim()
+      const num = parseInt(trimmedNum, 10)
+      if (!isNaN(num) && pendingChannelSelection.has(actualSender)) {
+        const options = pendingChannelSelection.get(actualSender)!
+        if (num >= 1 && num <= options.length) {
+          pendingChannelSelection.delete(actualSender)
+          const chosen = options[num - 1]
+          try {
+            const msgs = await getMessages(chosen.id, 100)
+            if (msgs.length === 0) {
+              await sock.sendMessage(sender, { text: `📭 No messages in *${chosen.name}*.` })
+            } else {
+              const lines = msgs.map((m) => {
+                const date = new Date(m.date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })
+                const senderInfo = m.out ? 'Me' : m.fromId.slice(0, 6)
+                const mediaInfo = m.media ? ` [${m.media.type}]` : ''
+                return `[${date}] ${senderInfo}: ${m.text || '(no text)'}${mediaInfo}`
+              })
+              const header = `💬 *${chosen.name}* (${msgs.length} messages)\n\n`
+              const full = header + lines.join('\n')
+              const chunkSize = 4000
+              if (full.length > chunkSize) {
+                let remaining = full.slice(header.length)
+                let chunk = header
+                for (const line of remaining.split('\n')) {
+                  if ((chunk + '\n' + line).length > chunkSize) {
+                    await sock.sendMessage(sender, { text: chunk })
+                    chunk = line + '\n'
+                  } else {
+                    chunk += line + '\n'
+                  }
+                }
+                if (chunk.trim()) await sock.sendMessage(sender, { text: chunk.trim() })
+              } else {
+                await sock.sendMessage(sender, { text: full })
+              }
+            }
+          } catch (err) {
+            await sock.sendMessage(sender, { text: `❌ Error: ${(err as Error).message}` })
+          }
+          return
+        }
+      }
 
       sharedAllGroups = await sock.groupFetchAllParticipating().catch(() => ({} as Record<string, any>))
       const myJids = [normalizeJid(sock.user?.id || ''), ownLid].filter((x): x is string => !!x)
