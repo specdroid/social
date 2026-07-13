@@ -10,26 +10,31 @@ router.get('/config', requireAuth, async (_req: Request, res: Response) => {
   res.json({
     baseUrl: config.baseUrl,
     hasApiKey: !!config.apiKey,
+    model: config.model,
     systemPrompt: config.systemPrompt,
   })
 })
 
 router.put('/config', requireAuth, async (req: Request, res: Response) => {
-  const { baseUrl, apiKey, systemPrompt } = req.body
+  const { baseUrl, apiKey, model, systemPrompt } = req.body
   if (baseUrl !== undefined && (typeof baseUrl !== 'string' || !baseUrl.startsWith('http'))) {
     throw new AppError(400, 'baseUrl must be a valid URL starting with http')
   }
   if (apiKey !== undefined && typeof apiKey !== 'string') {
     throw new AppError(400, 'apiKey must be a string')
   }
+  if (model !== undefined && typeof model !== 'string') {
+    throw new AppError(400, 'model must be a string')
+  }
   if (systemPrompt !== undefined && typeof systemPrompt !== 'string') {
     throw new AppError(400, 'systemPrompt must be a string')
   }
 
-  const config = await updateConfig({ baseUrl, apiKey, systemPrompt })
+  const config = await updateConfig({ baseUrl, apiKey, model, systemPrompt })
   res.json({
     baseUrl: config.baseUrl,
     hasApiKey: !!config.apiKey,
+    model: config.model,
     systemPrompt: config.systemPrompt,
   })
 })

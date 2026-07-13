@@ -10,13 +10,14 @@ export async function getConfig() {
   return config
 }
 
-export async function updateConfig(data: { baseUrl?: string; apiKey?: string; systemPrompt?: string }) {
+export async function updateConfig(data: { baseUrl?: string; apiKey?: string; model?: string; systemPrompt?: string }) {
   const current = await getConfig()
   return prisma.omnirouteConfig.update({
     where: { id: current.id },
     data: {
       ...(data.baseUrl !== undefined && { baseUrl: data.baseUrl }),
       ...(data.apiKey !== undefined && { apiKey: data.apiKey }),
+      ...(data.model !== undefined && { model: data.model }),
       ...(data.systemPrompt !== undefined && { systemPrompt: data.systemPrompt }),
     },
   })
@@ -27,7 +28,7 @@ export async function chatCompletion(messages: { role: string; content: string }
   if (!config.apiKey) throw new Error('Omniroute API key not configured')
 
   const body: any = {
-    model: 'gpt-4o-mini',
+    model: config.model || 'auto/coding:free',
     messages: [],
   }
 

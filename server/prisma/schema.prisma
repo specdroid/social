@@ -175,6 +175,7 @@ model OmnirouteConfig {
   id           Int      @id @default(autoincrement())
   baseUrl      String   @default("https://omniroutelb.duckdns.org/v1")
   apiKey       String   @default("")
+  model        String   @default("auto/coding:free")
   systemPrompt String   @default("")
   updatedAt    DateTime @updatedAt
 }

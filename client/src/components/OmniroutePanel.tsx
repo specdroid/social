@@ -5,6 +5,7 @@ import { useApi } from '../hooks/useApi'
 interface Config {
   baseUrl: string
   hasApiKey: boolean
+  model: string
   systemPrompt: string
 }
 
@@ -18,6 +19,7 @@ export function OmniroutePanel() {
   const [config, setConfig] = useState<Config | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
+  const [model, setModel] = useState('auto/coding:free')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [showKey, setShowKey] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -44,6 +46,7 @@ export function OmniroutePanel() {
       if (data) {
         setConfig(data)
         setBaseUrl(data.baseUrl)
+        setModel(data.model)
         setSystemPrompt(data.systemPrompt)
       }
     } catch { }
@@ -56,6 +59,7 @@ export function OmniroutePanel() {
       const data = await put<Config>('/api/omniroute/config', {
         baseUrl,
         apiKey: apiKey || undefined,
+        model,
         systemPrompt,
       })
       if (data) {
@@ -125,6 +129,17 @@ export function OmniroutePanel() {
             onChange={(e) => setBaseUrl(e.target.value)}
             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 focus:outline-none focus:border-zinc-500 text-sm font-mono"
             placeholder="https://omniroutelb.duckdns.org/v1"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm text-zinc-400 mb-1">Model</label>
+          <input
+            type="text"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 focus:outline-none focus:border-zinc-500 text-sm font-mono"
+            placeholder="auto/coding:free"
           />
         </div>
 
