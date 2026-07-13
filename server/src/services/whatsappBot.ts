@@ -27,7 +27,7 @@ const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
 let io: SocketIOServer | null = null
 let currentSocket: WASocket | null = null
 let isStarting = false
-const pendingChannelSelection = new Map<string, { options: Array<{ name: string; id: string }>; limit: number }>()
+const pendingChannelSelection = new Map<string, { options: Array<{ name: string; id: string }>; limit: number; showTime: boolean }>()
 let reconnectAttempts = 0
 let stopReconnecting = false
 let latestQrDataUrl: string | null = null
@@ -1783,11 +1783,12 @@ ${baseUrl}/facebook`,
     return true
   }
 
-  // ── tel get <name> [limit] ── fetch messages from a matching channel ──
-  const telGetChatMatch = textContent.match(/^tel\s+get\s+(.+?)(?:\s+(\d+))?$/is)
+  // ── tel get <name> [limit] [time] ── fetch messages from a matching channel ──
+  const telGetChatMatch = textContent.match(/^tel\s+get\s+(.+?)(?:\s+(\d+))?(?:\s+time)?$/is)
   if (telGetChatMatch) {
     const channelName = telGetChatMatch[1].trim()
     const limit = telGetChatMatch[2] ? parseInt(telGetChatMatch[2], 10) : 15
+    const showTime = /time$/i.test(textContent.trim())
     try {
       const dialogs = await getDialogs()
       const lowerQuery = channelName.toLowerCase()
@@ -1799,7 +1800,7 @@ ${baseUrl}/facebook`,
       if (matches.length > 1) {
         const lines = matches.map((d, i) => `${i + 1}. *${d.name}*${d.canSend ? '' : ' 🔇 (read-only)'}`)
         await sock.sendMessage(sender, { text: `🔍 Multiple channels match "${channelName}":\n\n${lines.join('\n')}\n\nReply with the number.` })
-        pendingChannelSelection.set(actualSender, { options: matches.map((d) => ({ name: d.name, id: d.id })), limit })
+        pendingChannelSelection.set(actualSender, { options: matches.map((d) => ({ name: d.name, id: d.id })), limit, showTime })
         return true
       }
       const channel = matches[0]
@@ -1808,10 +1809,10 @@ ${baseUrl}/facebook`,
         await sock.sendMessage(sender, { text: `📭 No messages in *${channel.name}*.` })
       } else {
         const lines = msgs.map((m) => {
-          const date = new Date(m.date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })
+          const date = showTime ? new Date(m.date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) + ' ' : ''
           const senderInfo = m.out ? 'Me' : m.fromId.slice(0, 6)
           const mediaInfo = m.media ? ` [${m.media.type}]` : ''
-          return `[${date}] ${senderInfo}: ${m.text || '(no text)'}${mediaInfo}`
+          return `${date}${senderInfo}: ${m.text || '(no text)'}${mediaInfo}`
         })
         const header = `💬 *${channel.name}* (${msgs.length} messages)\n\n`
         const full = header + lines.join('\n')
@@ -1960,7 +1961,7 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       if (!isNaN(num) && pendingChannelSelection.has(actualSender)) {
         const pending = pendingChannelSelection.get(actualSender)!
         if (num >= 1 && num <= pending.options.length) {
-          const { options, limit } = pending
+          const { options, limit, showTime } = pending
           pendingChannelSelection.delete(actualSender)
           const chosen = options[num - 1]
           try {
@@ -1969,10 +1970,10 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
               await sock.sendMessage(sender, { text: `📭 No messages in *${chosen.name}*.` })
             } else {
               const lines = msgs.map((m) => {
-                const date = new Date(m.date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })
+                const date = showTime ? new Date(m.date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) + ' ' : ''
                 const senderInfo = m.out ? 'Me' : m.fromId.slice(0, 6)
                 const mediaInfo = m.media ? ` [${m.media.type}]` : ''
-                return `[${date}] ${senderInfo}: ${m.text || '(no text)'}${mediaInfo}`
+                return `${date}${senderInfo}: ${m.text || '(no text)'}${mediaInfo}`
               })
               const header = `💬 *${chosen.name}* (${msgs.length} messages)\n\n`
               const full = header + lines.join('\n')
