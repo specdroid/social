@@ -170,3 +170,11 @@ model RetryQueue {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model OmnirouteConfig {
+  id           Int      @id @default(autoincrement())
+  baseUrl      String   @default("https://omniroutelb.duckdns.org/v1")
+  apiKey       String   @default("")
+  systemPrompt String   @default("")
+  updatedAt    DateTime @updatedAt
+}

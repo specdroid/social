@@ -13,6 +13,7 @@ import metaWebhookRoutes from './routes/webhooks/meta'
 import stripeWebhookRoutes from './routes/webhooks/stripe'
 import uploadRoutes from './routes/upload'
 import facebookRoutes from './routes/facebook'
+import omnirouteRoutes from './routes/omniroute'
 
 export function createApp(): express.Application {
   const app = express()
@@ -154,6 +155,7 @@ export function createApp(): express.Application {
   app.use('/api/billing', billingRoutes)
   app.use('/api/upload', uploadRoutes)
   app.use('/api/facebook', facebookRoutes)
+  app.use('/api/omniroute', omnirouteRoutes)
 
   app.use('/webhooks/meta', metaWebhookRoutes)
   app.use('/webhooks/stripe', stripeWebhookRoutes)

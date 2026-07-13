@@ -5,6 +5,7 @@ import {
   GitBranch,
   MessageSquare,
   Facebook,
+  Brain,
   CreditCard,
   HelpCircle,
   LogOut,
@@ -17,6 +18,7 @@ const navItems = [
   { path: '/automation', label: 'Automation', icon: GitBranch },
   { path: '/facebook', label: 'Facebook', icon: Facebook },
   { path: '/whatsapp', label: 'WhatsApp', icon: MessageSquare },
+  { path: '/omniroute', label: 'Omniroute', icon: Brain },
   { path: '/billing', label: 'Billing', icon: CreditCard },
   { path: '/help', label: 'Help', icon: HelpCircle },
 ]

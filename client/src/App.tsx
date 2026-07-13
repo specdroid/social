@@ -7,6 +7,7 @@ import { WhatsApp } from './pages/WhatsApp'
 import { Facebook } from './pages/Facebook'
 import { Billing } from './pages/Billing'
 import { Help } from './pages/Help'
+import { Omniroute } from './pages/Omniroute'
 
 function LoginPage() {
   const [email, setEmail] = useState('')
@@ -175,6 +176,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Layout><Help /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/omniroute"
+          element={
+            <ProtectedRoute>
+              <Layout><Omniroute /></Layout>
             </ProtectedRoute>
           }
         />
