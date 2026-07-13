@@ -90,6 +90,24 @@ export function OmniroutePanel() {
     }
   }
 
+  async function handleDeleteKey() {
+    if (!confirm('Delete the configured API key?')) return
+    setSaving(true)
+    setSaveMsg(null)
+    try {
+      const data = await put<Config>('/api/omniroute/config', { apiKey: '' })
+      if (data) {
+        setConfig(data)
+        setSaveMsg({ ok: true, text: 'API key deleted' })
+      }
+    } catch (e: any) {
+      setSaveMsg({ ok: false, text: e.message || 'Failed to delete' })
+    } finally {
+      setSaving(false)
+      setTimeout(() => setSaveMsg(null), 3000)
+    }
+  }
+
   async function handleSend() {
     if (!chatInput.trim() || sending) return
     const userMsg: ChatMessage = { role: 'user', content: chatInput.trim() }
@@ -191,6 +209,13 @@ export function OmniroutePanel() {
           >
             {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Test Connection
+          </button>
+          <button
+            onClick={handleDeleteKey}
+            disabled={!config?.hasApiKey || saving}
+            className="px-4 py-2 border border-red-800 text-red-400 rounded-lg text-sm hover:bg-red-950 transition-colors disabled:opacity-50"
+          >
+            Delete Key
           </button>
           {saveMsg && (
             <span className={`text-sm ${saveMsg.ok ? 'text-green-400' : 'text-red-400'}`}>
