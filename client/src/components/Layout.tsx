@@ -32,7 +32,8 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const handleLogout = () => {
     localStorage.removeItem('token')
-    window.location.href = '/login'
+    window.dispatchEvent(new Event('storage'))
+    navigate('/login', { replace: true })
   }
 
   const handleNav = (path: string) => {
