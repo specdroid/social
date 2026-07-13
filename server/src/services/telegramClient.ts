@@ -298,3 +298,81 @@ export async function sendMedia(chatId: string, filePath: string, caption?: stri
     try { fs.unlinkSync(filePath) } catch { /* ignore */ }
   }
 }
+
+export async function syncContactsAndDialogs(): Promise<{ contacts: number; conversations: number }> {
+  await ensureReady()
+  const c = getClient()
+  const dialogs = await c.getDialogs({ limit: 100 })
+  let contactsCount = 0
+  let conversationsCount = 0
+
+  for (const d of dialogs) {
+    const entity = d.entity as any
+    const tgId = d.id?.toString()
+    if (!tgId) continue
+
+    await prisma.telegramConversation.upsert({
+      where: { tgId },
+      update: {
+        name: d.name || d.title || 'Unknown',
+        type: d.isUser ? 'user' : d.isGroup ? 'group' : 'channel',
+        unreadCount: d.unreadCount,
+        lastMessage: d.message?.message || null,
+        lastMessageAt: d.message?.date ? new Date(d.message.date * 1000) : undefined,
+        lastSyncAt: new Date(),
+      },
+      create: {
+        tgId,
+        name: d.name || d.title || 'Unknown',
+        type: d.isUser ? 'user' : d.isGroup ? 'group' : 'channel',
+        unreadCount: d.unreadCount,
+        lastMessage: d.message?.message || null,
+        lastMessageAt: d.message?.date ? new Date(d.message.date * 1000) : null,
+      },
+    })
+    conversationsCount++
+
+    if (d.isUser && entity) {
+      const name = [entity.firstName, entity.lastName].filter(Boolean).join(' ') || d.name || 'Unknown'
+      const phone = entity.phone || ''
+      const username = entity.username || ''
+      await prisma.telegramContact.upsert({
+        where: { tgId },
+        update: { name, phone, username, lastSyncAt: new Date() },
+        create: { tgId, name, phone, username },
+      })
+      contactsCount++
+    }
+  }
+
+  log('info', 'telegram', 'Synced contacts and dialogs', { contacts: contactsCount, conversations: conversationsCount })
+  return { contacts: contactsCount, conversations: conversationsCount }
+}
+
+export async function findContactId(name: string): Promise<string | null> {
+  const lowered = name.toLowerCase().replace(/^@/, '')
+  const contact = await prisma.telegramContact.findFirst({
+    where: {
+      OR: [
+        { name: { contains: lowered } },
+        { phone: { contains: lowered } },
+        { username: { contains: lowered } },
+      ],
+    },
+  })
+  if (contact) return contact.tgId
+  const conv = await prisma.telegramConversation.findFirst({
+    where: { name: { contains: lowered } },
+  })
+  return conv?.tgId || null
+}
+
+export async function sendToContact(contactName: string, text: string, filePath?: string): Promise<void> {
+  const tgId = await findContactId(contactName)
+  if (!tgId) throw new Error(`Contact "${contactName}" not found. Sync contacts first.`)
+  if (filePath) {
+    await sendMedia(tgId, filePath, text || undefined)
+  } else {
+    await sendMessage(tgId, text)
+  }
+}

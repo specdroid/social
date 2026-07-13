@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useApi } from '../hooks/useApi'
 import { TelegramIcon } from './icons/TelegramIcon'
 import { useSocket } from '../hooks/useSocket'
-import { Search, Send, Paperclip, Loader2 } from 'lucide-react'
+import { Search, Send, Paperclip, Loader2, RefreshCw, Clock } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 
@@ -37,6 +37,8 @@ export function TelegramChat({ onDisconnect, phone }: { onDisconnect: () => void
   const [sending, setSending] = useState(false)
   const [loadingDialogs, setLoadingDialogs] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [lastSync, setLastSync] = useState<string | null>(null)
   const chatEnd = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -47,7 +49,35 @@ export function TelegramChat({ onDisconnect, phone }: { onDisconnect: () => void
 
   useEffect(() => {
     loadDialogs()
+    fetchLastSync()
   }, [])
+
+  async function fetchLastSync() {
+    try {
+      const token = localStorage.getItem('token')
+      const resp = await fetch(`${API_URL}/api/telegram/synced-conversations`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const convs = await resp.json()
+      if (convs.length > 0) setLastSync(convs[0].lastSyncAt || null)
+    } catch { /* ignore */ }
+  }
+
+  async function handleSync() {
+    setSyncing(true)
+    try {
+      const token = localStorage.getItem('token')
+      const resp = await fetch(`${API_URL}/api/telegram/sync`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      await resp.json()
+      setLastSync(new Date().toISOString())
+      setSyncing(false)
+      loadDialogs()
+    } catch { /* ignore */ }
+    setSyncing(false)
+  }
 
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: 'smooth' })
@@ -148,10 +178,26 @@ export function TelegramChat({ onDisconnect, phone }: { onDisconnect: () => void
             <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
             {phone || 'Connected'}
           </span>
+          {lastSync && (
+            <span className="flex items-center gap-1 text-[10px] text-zinc-600">
+              <Clock className="w-3 h-3" />
+              {new Date(lastSync).toLocaleDateString()} {new Date(lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
         </div>
-        <button onClick={onDisconnect} className="text-xs text-red-400 hover:text-red-300 transition-colors">
-          Disconnect
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Syncing...' : 'Sync'}
+          </button>
+          <button onClick={onDisconnect} className="text-xs text-red-400 hover:text-red-300 transition-colors">
+            Disconnect
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-4 flex-1 min-h-0">

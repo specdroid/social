@@ -188,3 +188,27 @@ model TelegramSession {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+
+model TelegramContact {
+  id         String   @id @default(cuid())
+  tgId       String   @unique
+  name       String
+  phone      String?
+  username   String?
+  lastSyncAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model TelegramConversation {
+  id            String   @id @default(cuid())
+  tgId          String   @unique
+  name          String
+  type          String
+  unreadCount   Int      @default(0)
+  lastMessage   String?
+  lastMessageAt DateTime?
+  lastSyncAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

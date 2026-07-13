@@ -14,7 +14,11 @@ import {
   getMessages,
   sendMessage,
   sendMedia,
+  syncContactsAndDialogs,
 } from '../services/telegramClient'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 const router = Router()
 
@@ -94,6 +98,21 @@ router.post('/send-media', requireAuth, tgUpload.single('file'), async (req: Aut
   }
   await sendMedia(String(chatId), file.path, caption || undefined)
   res.json({ success: true })
+})
+
+router.get('/synced-contacts', requireAuth, async (_req: AuthRequest, res: Response) => {
+  const contacts = await prisma.telegramContact.findMany({ orderBy: { name: 'asc' } })
+  res.json(contacts)
+})
+
+router.get('/synced-conversations', requireAuth, async (_req: AuthRequest, res: Response) => {
+  const conversations = await prisma.telegramConversation.findMany({ orderBy: { lastMessageAt: 'desc' } })
+  res.json(conversations)
+})
+
+router.post('/sync', requireAuth, async (_req: AuthRequest, res: Response) => {
+  const result = await syncContactsAndDialogs()
+  res.json(result)
 })
 
 export default router

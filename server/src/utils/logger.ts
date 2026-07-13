@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
 export type LogLevel = 'info' | 'warn' | 'error'
-export type LogSource = 'meta_api' | 'whatsapp' | 'stripe' | 'system'
+export type LogSource = 'meta_api' | 'whatsapp' | 'stripe' | 'system' | 'telegram'
 
 export async function log(
   level: LogLevel,

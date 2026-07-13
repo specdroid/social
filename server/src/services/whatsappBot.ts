@@ -19,6 +19,7 @@ import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
 import { publishPost } from './metaGraph'
 import { chatCompletion } from './omniroute'
+import { sendToContact } from './telegramClient'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -1693,6 +1694,47 @@ ${baseUrl}/facebook`,
   // ── catch unrecognized ws commands ──
   if (/^ws\s+/i.test(textContent)) {
     await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nws get groups' })
+    return true
+  }
+
+  // ── tel send <contact> : <message> ── send Telegram message via MTProto ──
+  const telSendMatch = textContent.match(/^tel\s+send\s+(.+?)\s*:\s*(.*)/is)
+  if (telSendMatch) {
+    const contactName = telSendMatch[1].trim()
+    const messageText = telSendMatch[2]?.trim() || ''
+    const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
+
+    if (!contactName) {
+      await sock.sendMessage(sender, { text: '❌ Usage: tel send <contact> : <message>\n\nSend a Telegram message to a synced contact.\nAttach media to send a file.\n\n_Example:_ tel send John Doe : Hello!' })
+      return true
+    }
+
+    try {
+      let filePath: string | null = null
+      if (hasMedia) {
+        const buffer = await downloadMediaMessage(message, 'buffer', {})
+        let fileName = `tel_${Date.now()}`
+        if (message.message?.imageMessage) {
+          fileName += '.jpg'
+        } else if (message.message?.documentMessage) {
+          const ext = path.extname(message.message.documentMessage.fileName || 'file') || '.bin'
+          fileName += ext
+        } else {
+          fileName += '.bin'
+        }
+        const fpath = path.resolve(os.tmpdir(), fileName)
+        fs.writeFileSync(fpath, buffer)
+        filePath = fpath
+      }
+
+      await sock.sendMessage(sender, { text: `📨 Sending to "${contactName}"...` })
+      await sendToContact(contactName, messageText, filePath ?? undefined)
+      await sock.sendMessage(sender, { text: `✅ Message sent to "${contactName}"` })
+      log('info', 'whatsapp', 'tel_send: sent', { contact: contactName, hasMedia })
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ Telegram error: ${(err as Error).message}` })
+      log('error', 'whatsapp', 'tel_send: error', { contact: contactName, error: (err as Error).message })
+    }
     return true
   }
 

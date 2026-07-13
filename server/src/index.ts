@@ -4,7 +4,7 @@ import { createApp } from './app'
 import { env } from './config/env'
 import { setupWebSocket } from './websocket/whatsappSocket'
 import { initWhatsAppBot, cleanupAuthFolder } from './services/whatsappBot'
-import { setSocketIO as setTelegramIO } from './services/telegramClient'
+import { setSocketIO as setTelegramIO, syncContactsAndDialogs } from './services/telegramClient'
 import { startContentScheduler } from './services/contentScheduler'
 import { processRetryQueue } from './services/retryQueue'
 import { log } from './utils/logger'
@@ -48,6 +48,14 @@ async function main(): Promise<void> {
       log('error', 'system', 'Retry queue cron failed', {
         error: (err as Error).message,
       })
+    })
+  })
+
+  cron.schedule('0 0 * * *', () => {
+    syncContactsAndDialogs().then((r) => {
+      log('info', 'system', 'Telegram auto-sync completed', r)
+    }).catch((err) => {
+      log('error', 'system', 'Telegram auto-sync failed', { error: (err as Error).message })
     })
   })
 
