@@ -19,7 +19,7 @@ import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
 import { publishPost } from './metaGraph'
 import { chatCompletion } from './omniroute'
-import { sendToContact, syncContactsAndDialogs } from './telegramClient'
+import { sendToContact, syncContactsAndDialogs, getChannels, getMyBots } from './telegramClient'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -1694,6 +1694,56 @@ ${baseUrl}/facebook`,
   // ── catch unrecognized ws commands ──
   if (/^ws\s+/i.test(textContent)) {
     await sock.sendMessage(sender, { text: '❌ Unknown ws command. Try:\nws create name save gr1, gr2\nws list name: content\nws gr1, gr2: content\nws get groups' })
+    return true
+  }
+
+  // ── tel get channels ── list all Telegram channels ──
+  if (/^tel\s+get\s+channels$/i.test(textContent.trim())) {
+    try {
+      const channels = await getChannels()
+      if (channels.length === 0) {
+        await sock.sendMessage(sender, { text: '📢 No channels found.' })
+      } else {
+        const lines = channels.map((c) => `📢 *${c.name}*${c.canSend ? '' : ' 🔇 (read-only)'}`)
+        const header = `📢 *Telegram Channels (${channels.length})*\n\n`
+        const msg = header + lines.join('\n')
+        const chunkSize = 4000
+        if (msg.length > chunkSize) {
+          let remaining = msg.slice(header.length)
+          let chunk = header
+          for (const line of remaining.split('\n')) {
+            if ((chunk + '\n' + line).length > chunkSize) {
+              await sock.sendMessage(sender, { text: chunk })
+              chunk = line + '\n'
+            } else {
+              chunk += line + '\n'
+            }
+          }
+          if (chunk.trim()) await sock.sendMessage(sender, { text: chunk.trim() })
+        } else {
+          await sock.sendMessage(sender, { text: msg })
+        }
+      }
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ Error: ${(err as Error).message}` })
+    }
+    return true
+  }
+
+  // ── tel get mybots ── list my Telegram bots ──
+  if (/^tel\s+get\s+mybots$/i.test(textContent.trim())) {
+    try {
+      const bots = await getMyBots()
+      if (bots.length === 0) {
+        await sock.sendMessage(sender, { text: '🤖 No bots found. Create one at @BotFather on Telegram.' })
+      } else {
+        const lines = bots.map((b) => `🤖 *${b.name}*${b.username ? ` (@${b.username})` : ''}`)
+        const msg = `🤖 *My Bots (${bots.length})*\n\n` + lines.join('\n')
+        await sock.sendMessage(sender, { text: msg })
+      }
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ Error: ${(err as Error).message}` })
+    }
     return true
   }
 

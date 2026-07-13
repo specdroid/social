@@ -376,3 +376,26 @@ export async function sendToContact(contactName: string, text: string, filePath?
     await sendMessage(tgId, text)
   }
 }
+
+export async function getChannels(): Promise<Array<{ name: string; canSend: boolean }>> {
+  const dialogs = await getDialogs()
+  return dialogs.filter((d) => d.type === 'channel').map((d) => ({
+    name: d.name,
+    canSend: d.canSend,
+  }))
+}
+
+export async function getMyBots(): Promise<Array<{ name: string; username?: string }>> {
+  await ensureReady()
+  const c = getClient()
+  const dialogs = await c.getDialogs({ limit: 100 })
+  const bots: Array<{ name: string; username?: string }> = []
+  for (const d of dialogs) {
+    const entity = d.entity as any
+    if (d.isUser && entity?.bot && entity?.botCanEdit) {
+      const name = [entity.firstName, entity.lastName].filter(Boolean).join(' ') || d.name || 'Unknown'
+      bots.push({ name, username: entity.username || undefined })
+    }
+  }
+  return bots
+}
