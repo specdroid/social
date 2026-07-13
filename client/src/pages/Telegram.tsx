@@ -9,7 +9,7 @@ interface TelegramStatus {
 }
 
 export function Telegram() {
-  const { get } = useApi()
+  const { get, post } = useApi()
   const [status, setStatus] = useState<TelegramStatus>({ connected: false, phone: null })
   const [loading, setLoading] = useState(true)
 
@@ -24,6 +24,13 @@ export function Telegram() {
     }
   }, [get])
 
+  const handleDisconnect = useCallback(async () => {
+    try {
+      await post('/api/telegram/disconnect', {})
+    } catch { /* ignore */ }
+    setStatus({ connected: false, phone: null })
+  }, [post])
+
   useEffect(() => {
     fetchStatus()
   }, [fetchStatus])
@@ -36,5 +43,5 @@ export function Telegram() {
     return <TelegramLogin onLogin={fetchStatus} />
   }
 
-  return <TelegramChat onDisconnect={fetchStatus} phone={status.phone} />
+  return <TelegramChat onDisconnect={handleDisconnect} phone={status.phone} />
 }
