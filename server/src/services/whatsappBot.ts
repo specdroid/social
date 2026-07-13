@@ -19,7 +19,7 @@ import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
 import { publishPost } from './metaGraph'
 import { chatCompletion } from './omniroute'
-import { sendToContact } from './telegramClient'
+import { sendToContact, syncContactsAndDialogs } from './telegramClient'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -1700,9 +1700,14 @@ ${baseUrl}/facebook`,
   // ── tel get contacts ── list all synced Telegram contacts ──
   if (/^tel\s+get\s+contacts$/i.test(textContent.trim())) {
     try {
-      const contacts = await prisma.telegramContact.findMany({ orderBy: { name: 'asc' } })
+      let contacts = await prisma.telegramContact.findMany({ orderBy: { name: 'asc' } })
       if (contacts.length === 0) {
-        await sock.sendMessage(sender, { text: '📇 No Telegram contacts synced yet. Use the Sync button on the Telegram page first.' })
+        await sock.sendMessage(sender, { text: '🔄 No contacts cached — syncing from Telegram...' })
+        await syncContactsAndDialogs()
+        contacts = await prisma.telegramContact.findMany({ orderBy: { name: 'asc' } })
+      }
+      if (contacts.length === 0) {
+        await sock.sendMessage(sender, { text: '📇 No Telegram contacts found. Make sure your Telegram account has contacts.' })
       } else {
         const lines = contacts.map((c) => `👤 *${c.name}*${c.phone ? ` (${c.phone})` : ''}${c.username ? ` @${c.username}` : ''}`)
         const chunks: string[] = []
