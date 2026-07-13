@@ -32,7 +32,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const handleLogout = () => {
     localStorage.removeItem('token')
-    navigate('/login')
+    window.location.href = '/login'
   }
 
   const handleNav = (path: string) => {
