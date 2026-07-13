@@ -19,7 +19,7 @@ import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
 import { publishPost } from './metaGraph'
 import { chatCompletion } from './omniroute'
-import { sendToContact, syncContactsAndDialogs, getChannels, getMyBots } from './telegramClient'
+import { sendToContact, syncContactsAndDialogs, getChannels, getMyBots, getDialogs, getMessages } from './telegramClient'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -1774,6 +1774,53 @@ ${baseUrl}/facebook`,
         if (chunk) chunks.push(chunk)
         for (const msg of chunks) {
           await sock.sendMessage(sender, { text: msg })
+        }
+      }
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ Error: ${(err as Error).message}` })
+    }
+    return true
+  }
+
+  // ── tel get <channel> chat ── fetch messages from a channel ──
+  const telGetChatMatch = textContent.match(/^tel\s+get\s+(.+?)\s+chat$/is)
+  if (telGetChatMatch) {
+    const channelName = telGetChatMatch[1].trim()
+    try {
+      const dialogs = await getDialogs()
+      const channel = dialogs.find((d) => d.name.toLowerCase() === channelName.toLowerCase())
+      if (!channel) {
+        await sock.sendMessage(sender, { text: `❌ Channel "${channelName}" not found. Use \`tel get channels\` to list them.` })
+        return true
+      }
+      const msgs = await getMessages(channel.id, 50)
+      if (msgs.length === 0) {
+        await sock.sendMessage(sender, { text: `📭 No messages in *${channel.name}*.` })
+      } else {
+        const isChannel = channel.type === 'channel'
+        const lines = msgs.map((m) => {
+          const date = new Date(m.date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })
+          const senderInfo = m.out ? 'Me' : m.fromId.slice(0, 6)
+          const mediaInfo = m.media ? ` [${m.media.type}]` : ''
+          return `[${date}] ${senderInfo}: ${m.text || '(no text)'}${mediaInfo}`
+        })
+        const header = `💬 *${channel.name}* (${msgs.length} messages)\n\n`
+        const full = header + lines.join('\n')
+        const chunkSize = 4000
+        if (full.length > chunkSize) {
+          let remaining = full.slice(header.length)
+          let chunk = header
+          for (const line of remaining.split('\n')) {
+            if ((chunk + '\n' + line).length > chunkSize) {
+              await sock.sendMessage(sender, { text: chunk })
+              chunk = line + '\n'
+            } else {
+              chunk += line + '\n'
+            }
+          }
+          if (chunk.trim()) await sock.sendMessage(sender, { text: chunk.trim() })
+        } else {
+          await sock.sendMessage(sender, { text: full })
         }
       }
     } catch (err) {
