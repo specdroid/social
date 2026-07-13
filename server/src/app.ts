@@ -65,6 +65,11 @@ export function createApp(): express.Application {
           example: 'ws fb login',
         },
         {
+          command: 'ws ai: <prompt>',
+          description: 'Send a prompt to the AI (requires Omniroute config on dashboard).',
+          example: 'ws ai: What is the capital of France?',
+        },
+        {
           command: 'ws create rule <name>',
           description: 'Start an interactive wizard to create an automation rule. The bot will ask for platform, trigger values, contacts, saved groups, autoreply, and media type step by step.',
           example: 'ws create rule Motorcycle',

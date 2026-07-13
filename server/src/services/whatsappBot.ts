@@ -18,6 +18,7 @@ import { log } from '../utils/logger'
 import { delay, randomDelay } from '../utils/delay'
 import { env } from '../config/env'
 import { publishPost } from './metaGraph'
+import { chatCompletion } from './omniroute'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -1250,6 +1251,10 @@ _Example:_ ws fb post: Hello Facebook!
 Get the link to upload Facebook cookies
 _Example:_ ws fb login
 
+🔹 *ws ai: prompt*
+Send a prompt to the AI and get a response (requires Omniroute config on the dashboard).
+_Example:_ ws ai: What is the capital of France?
+
 🔹 *-help*
 Show this help
 _Example:_ -help
@@ -1578,6 +1583,29 @@ _Example:_ ws test welcome bot: hello
     } catch (err) {
       await sock.sendMessage(sender, { text: `❌ Wall post failed: ${(err as Error).message}` })
       log('error', 'whatsapp', 'facebook_wall: post error', { error: (err as Error).message })
+    }
+    return true
+  }
+
+  // ── ws ai: prompt / ws ai : prompt ── send prompt to Omniroute AI ──
+  const aiMatch = textContent.match(/^ws\s+ai\s*:\s*(.*)/is)
+  if (aiMatch) {
+    const prompt = aiMatch[1]?.trim()
+    if (!prompt) {
+      await sock.sendMessage(sender, { text: '❌ Usage: ws ai: <prompt>\n\nSend a prompt to the AI and get a response.\n\n_Example:_ ws ai: What is the capital of France?' })
+      return true
+    }
+
+    try {
+      await sock.sendMessage(sender, { text: '🧠 Thinking...' })
+      const reply = await chatCompletion([{ role: 'user', content: prompt }])
+      const maxLen = 4000
+      const text = reply.length > maxLen ? reply.slice(0, maxLen) + '...' : reply
+      await sock.sendMessage(sender, { text: `🤖 *AI:*\n\n${text}` })
+      log('info', 'whatsapp', 'omniroute_ai: response sent', { prompt: prompt.slice(0, 100) })
+    } catch (err) {
+      await sock.sendMessage(sender, { text: `❌ AI error: ${(err as Error).message}` })
+      log('error', 'whatsapp', 'omniroute_ai: error', { error: (err as Error).message })
     }
     return true
   }
