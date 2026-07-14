@@ -11,7 +11,6 @@ import { PrismaClient } from '@prisma/client'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
-import { execFile } from 'child_process'
 import QRCode from 'qrcode'
 import { SocksProxyAgent } from 'socks-proxy-agent'
 import { log } from '../../utils/logger'
@@ -817,7 +816,7 @@ export class UserWhatsAppManager {
     // ── -help ──
     if (/^-help$/i.test(textContent.trim())) {
       await sock.sendMessage(sender, {
-        text: `📋 *Commands*\n\n🔹 *fb: content* — Post to Facebook Page\n🔹 *ws fb post: content* — Post to Facebook wall\n🔹 *ws ai: prompt* — AI chat\n🔹 *-help* — Show help\n🔹 *ws create rule <name>* — Create automation rule\n🔹 *ws create <name> save <gr1, gr2>* — Save group list\n🔹 *ws get groups* — List WhatsApp groups\n🔹 *ws get rules* — List automation rules\n🔹 *ws gr1, gr2: content* — Forward to groups\n🔹 *ws list <name>: content* — Send to saved list\n🔹 *ws test <rule>: <trigger>* — Test rule\n🔹 *tel get channels* — List Telegram channels\n🔹 *tel get <channel> [limit] [time]* — Fetch messages\n🔹 *tel send <contact>: <message>* — Send Telegram msg`,
+        text: `📋 *Commands*\n\n🔹 *fb: content* — Post to Facebook Page\n🔹 *ws ai: prompt* — AI chat\n🔹 *-help* — Show help\n🔹 *ws create rule <name>* — Create automation rule\n🔹 *ws create <name> save <gr1, gr2>* — Save group list\n🔹 *ws get groups* — List WhatsApp groups\n🔹 *ws get rules* — List automation rules\n🔹 *ws gr1, gr2: content* — Forward to groups\n🔹 *ws list <name>: content* — Send to saved list\n🔹 *ws test <rule>: <trigger>* — Test rule\n🔹 *tel get channels* — List Telegram channels\n🔹 *tel get <channel> [limit] [time]* — Fetch messages\n🔹 *tel send <contact>: <message>* — Send Telegram msg`,
       })
       return true
     }
@@ -920,50 +919,6 @@ export class UserWhatsAppManager {
       return true
     }
 
-    // ── ws fb post: content ──
-    const wallPrefix = textContent.match(/^ws\s+fb\s+post\s*:\s*(.*)/is)
-    if (wallPrefix) {
-      const wallContent = wallPrefix[1]
-      const wallHasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
-      if (!wallContent && !wallHasMedia) return true
-      try {
-        let content = wallContent
-        let filePath: string | null = null
-        if (message.message?.imageMessage) {
-          const buffer = await downloadMediaMessage(message, 'buffer', {}) as Buffer
-          filePath = path.resolve(os.tmpdir(), `fb_${Date.now()}.jpg`)
-          fs.writeFileSync(filePath, buffer)
-          content = message.message.imageMessage.caption || wallContent || ''
-        } else if (message.message?.documentMessage) {
-          const buffer = await downloadMediaMessage(message, 'buffer', {}) as Buffer
-          const ext = path.extname(message.message.documentMessage.fileName || 'document') || '.bin'
-          filePath = path.resolve(os.tmpdir(), `fb_${Date.now()}${ext}`)
-          fs.writeFileSync(filePath, buffer)
-          content = message.message.documentMessage.caption || wallContent || ''
-        }
-        const scriptPath = path.resolve(process.cwd(), 'scripts', 'fb_post_to_wall.py')
-        const args = ['--content', content]
-        if (filePath) args.push('--file', filePath)
-        const cookiesPath = path.resolve(process.cwd(), 'fb_cookies.txt')
-        if (fs.existsSync(cookiesPath)) args.push('--cookies', cookiesPath)
-        const venvPython = path.resolve(process.cwd(), 'venv', 'bin', 'python3')
-        const pythonBin = fs.existsSync(venvPython) ? venvPython : 'python3'
-        await sock.sendMessage(sender, { text: '🔄 Posting to Facebook wall...' })
-        const stdout = await new Promise<string>((resolve, reject) => {
-          execFile(pythonBin, [scriptPath, ...args], { timeout: 120000 }, (err, stdout, stderr) => {
-            if (err) reject(new Error((stderr || stdout || err.message).trim()))
-            else resolve(stdout)
-          })
-        })
-        const lines = stdout.trim().split('\n').filter(l => l.trim())
-        const result = JSON.parse(lines[lines.length - 1] || '{}')
-        if (result.success) await sock.sendMessage(sender, { text: `✅ Posted to Facebook wall` })
-        else await sock.sendMessage(sender, { text: `❌ Wall post failed: ${result.error}` })
-        if (filePath) try { fs.unlinkSync(filePath) } catch { /* ignore */ }
-      } catch (err) { await sock.sendMessage(sender, { text: `❌ Wall post failed: ${(err as Error).message}` }) }
-      return true
-    }
-
     // ── ws ai: prompt ──
     const aiMatch = textContent.match(/^ws\s+ai\s*:\s*(.*)/is)
     if (aiMatch) {
@@ -1011,14 +966,7 @@ export class UserWhatsAppManager {
 
     // ── ws help ──
     if (/^ws\s+(help|-h)$/i.test(textContent.trim())) {
-      await sock.sendMessage(sender, { text: '🔹 ws get groups\n🔹 ws get rules\n🔹 ws create rule <name>\n🔹 ws delete rule <name>\n🔹 ws create <name> save <gr1, gr2>\n🔹 ws delete list <name>\n🔹 ws list <name>: <content>\n🔹 ws <gr1, gr2>: <content>\n🔹 ws test <rule>: <trigger>\n🔹 ws ai: <prompt>\n🔹 ws fb post: <content>\n🔹 ws fb login' })
-      return true
-    }
-
-    // ── ws fb login ──
-    if (/^ws fb login$/i.test(textContent.trim())) {
-      const baseUrl = env.FRONTEND_URL.replace(/\/$/, '')
-      await sock.sendMessage(sender, { text: `🔑 *Facebook Wall Post Setup*\n\nOpen: ${baseUrl}/facebook` })
+      await sock.sendMessage(sender, { text: '🔹 ws get groups\n🔹 ws get rules\n🔹 ws create rule <name>\n🔹 ws delete rule <name>\n🔹 ws create <name> save <gr1, gr2>\n🔹 ws delete list <name>\n🔹 ws list <name>: <content>\n🔹 ws <gr1, gr2>: <content>\n🔹 ws test <rule>: <trigger>\n🔹 ws ai: <prompt>' })
       return true
     }
 

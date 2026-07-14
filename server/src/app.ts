@@ -2,7 +2,6 @@ import 'express-async-errors'
 import express from 'express'
 import cors from 'cors'
 import path from 'path'
-import fs from 'fs'
 import { env } from './config/env'
 import { errorHandler } from './middleware/errorHandler'
 import authRoutes from './routes/auth'
@@ -55,16 +54,6 @@ export function createApp(): express.Application {
           command: 'fb: <content>',
           description: 'Post a message to your connected Facebook Page (via Graph API).',
           example: 'fb: Hello Page!',
-        },
-        {
-          command: 'ws fb post: <content>',
-          description: 'Post a message to your Facebook wall (via browser automation). Attach an image or document to include media.',
-          example: 'ws fb post: Hello Facebook!',
-        },
-        {
-          command: 'ws fb login',
-          description: 'Get the link to upload Facebook cookies for wall posting.',
-          example: 'ws fb login',
         },
         {
           command: 'ws ai: <prompt>',
@@ -168,23 +157,6 @@ export function createApp(): express.Application {
 
   app.use('/webhooks/meta', metaWebhookRoutes)
   app.use('/webhooks/stripe', stripeWebhookRoutes)
-
-  // ── Facebook cookies upload API ──────────────────────────────────────
-
-  app.get('/api/fb-setup/status', (_req, res) => {
-    const exists = fs.existsSync(path.resolve(process.cwd(), 'fb_cookies.txt'))
-    res.json({ installed: exists })
-  })
-
-  app.post('/api/fb-setup/upload', (req, res) => {
-    const { content } = req.body
-    if (!content || typeof content !== 'string') {
-      res.status(400).json({ success: false, error: 'Missing cookies content' })
-      return
-    }
-    fs.writeFileSync(path.resolve(process.cwd(), 'fb_cookies.txt'), content, 'utf-8')
-    res.json({ success: true })
-  })
 
   app.use(errorHandler)
 
