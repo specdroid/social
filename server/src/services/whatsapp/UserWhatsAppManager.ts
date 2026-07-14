@@ -21,6 +21,7 @@ import { publishPost } from '../metaGraph'
 import { chatCompletion } from '../omniroute'
 import { sendToContact, syncContactsAndDialogs, getChannels, getMyBots, getDialogs, getMessages } from '../telegramClient'
 import type { ContactEntry, CreateRuleWizard, ChannelSelection, ConnectionState } from './types'
+import { matchAnyTrigger } from '../triggerMatch'
 
 const prisma = new PrismaClient()
 const MAX_RECONNECT_ATTEMPTS = 3
@@ -691,17 +692,24 @@ export class UserWhatsAppManager {
           const vals = parseCommaList(trimmed)
           if (vals.length === 0) { await sock.sendMessage(sender, { text: '❌ At least one trigger value is required.' }); return true }
           wizard.triggerValues = vals; wizard.step = 2
-          await sock.sendMessage(sender, { text: '📞 Contacts? Send phone numbers comma-separated, e.g. `70656517, 96176814597`\nOr send `-` for none.' })
+          await sock.sendMessage(sender, { text: '🎯 Trigger mode?\n\n0 — Beginning of sentence\n1 — Anywhere (exact word match)\n\nSend `0` or `1`' })
           return true
         }
         case 2: {
-          const raw = trimmed.replace(/^[-–—]+$/, '').trim()
-          wizard.contactJids = raw ? raw.split(',').map(s => s.trim()).filter(Boolean).map(p => p.includes('@') ? p : p + '@s.whatsapp.net') : []
-          wizard.step = 3
-          await sock.sendMessage(sender, { text: '👥 Groups (Contact Groups or Group Lists)? Send names comma-separated.\nOr send `-` for none.' })
+          const num = parseInt(trimmed, 10)
+          if (isNaN(num) || num < 0 || num > 1) { await sock.sendMessage(sender, { text: '❌ Invalid. Choose 0 for Beginning, 1 for Anywhere.' }); return true }
+          wizard.triggerMode = num; wizard.step = 3
+          await sock.sendMessage(sender, { text: '📞 Contacts? Send phone numbers comma-separated, e.g. `70656517, 96176814597`\nOr send `-` for none.' })
           return true
         }
         case 3: {
+          const raw = trimmed.replace(/^[-–—]+$/, '').trim()
+          wizard.contactJids = raw ? raw.split(',').map(s => s.trim()).filter(Boolean).map(p => p.includes('@') ? p : p + '@s.whatsapp.net') : []
+          wizard.step = 4
+          await sock.sendMessage(sender, { text: '👥 Groups (Contact Groups or Group Lists)? Send names comma-separated.\nOr send `-` for none.' })
+          return true
+        }
+        case 4: {
           const raw = trimmed.replace(/^[-–—]+$/, '').trim()
           const names = raw ? parseCommaList(raw) : []
           const resolvedContactGroupIds: string[] = []
@@ -718,17 +726,17 @@ export class UserWhatsAppManager {
             return true
           }
           wizard.contactGroupIds = resolvedContactGroupIds; wizard.contactGroupNames = resolvedContactGroupNames; wizard.savedGroupListNames = resolvedSavedListNames
-          wizard.step = 4
+          wizard.step = 5
           await sock.sendMessage(sender, { text: '💬 Your autoreply? Send the reply text' })
           return true
         }
-        case 4: {
+        case 5: {
           if (!trimmed) { await sock.sendMessage(sender, { text: '❌ Reply text is required.' }); return true }
-          wizard.replyText = trimmed; wizard.step = 5
+          wizard.replyText = trimmed; wizard.step = 6
           await sock.sendMessage(sender, { text: '🖼️ Media type? Choose:\n0 — Text only\n2 — Image\n3 — Video\n4 — Audio\n5 — Document' })
           return true
         }
-        case 5: {
+        case 6: {
           const num = parseInt(trimmed, 10)
           if (isNaN(num) || ![0, 2, 3, 4, 5].includes(num)) { await sock.sendMessage(sender, { text: '❌ Invalid media type.' }); return true }
           wizard.mediaTypeCode = num
@@ -742,11 +750,12 @@ export class UserWhatsAppManager {
           if (wizard.contactGroupIds?.length) { base.contactGroupId = wizard.contactGroupIds[0]; base.contactGroupIds = wizard.contactGroupIds }
           if (wizard.savedGroupListNames?.length) { base.savedGroupListNames = wizard.savedGroupListNames }
           const actionPayload = mediaType === 'none' ? JSON.stringify(base) : JSON.stringify({ ...base, mediaType, mediaUrls: [], caption: wizard.replyText })
+          const triggerModeStr = wizard.triggerMode === 0 ? 'beginning' : 'anywhere'
           try {
             await prisma.automationRule.create({
-              data: { userId: this.userId, name: wizard.name, platform, triggerType: 'keyword_comment', triggerValue: wizard.triggerValues!.join(', '), actionType, actionPayload },
+              data: { userId: this.userId, name: wizard.name, platform, triggerType: 'keyword_comment', triggerValue: wizard.triggerValues!.join(', '), triggerMode: triggerModeStr, actionType, actionPayload },
             })
-            await sock.sendMessage(sender, { text: `✅ Rule "${wizard.name}" created` })
+            await sock.sendMessage(sender, { text: `✅ Rule "${wizard.name}" created (trigger: ${triggerModeStr})` })
           } catch (err) { await sock.sendMessage(sender, { text: `❌ Failed: ${(err as Error).message}` }) }
           this.createRuleWizards.delete(sender)
           return true
@@ -820,8 +829,8 @@ export class UserWhatsAppManager {
       const triggerValue = testMatch[2]?.trim() || ''
       const rule = await prisma.automationRule.findFirst({ where: { userId: this.userId, name: ruleName, isActive: true, platform: 'whatsapp' } })
       if (!rule) { await sock.sendMessage(sender, { text: `❌ Rule "${ruleName}" not found.` }); return true }
-      const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim().toLowerCase()).filter(Boolean)
-      if (!triggers.some(t => triggerValue.toLowerCase().includes(t))) { await sock.sendMessage(sender, { text: `⚠️ Trigger "${triggerValue}" doesn't match rule triggers.` }); return true }
+      const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim()).filter(Boolean)
+      if (!matchAnyTrigger(triggerValue, triggers, rule.triggerMode || 'anywhere')) { await sock.sendMessage(sender, { text: `⚠️ Trigger "${triggerValue}" doesn't match rule triggers.` }); return true }
       let payload: any
       try { payload = JSON.parse(rule.actionPayload) } catch { payload = { replyText: rule.actionPayload } }
       const content = payload.replyText || ''
@@ -1282,8 +1291,8 @@ export class UserWhatsAppManager {
       // ── Main automation rules ──
       const rules = await prisma.automationRule.findMany({ where: { userId: this.userId, isActive: true, platform: 'whatsapp', triggerType: 'keyword_comment' } })
       for (const rule of rules) {
-        const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim().toLowerCase()).filter(Boolean)
-        if (!triggers.some(t => textContent.toLowerCase().includes(t))) continue
+        const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim()).filter(Boolean)
+        if (!matchAnyTrigger(textContent, triggers, rule.triggerMode || 'anywhere')) continue
 
         const lastSent = this.threadTimestamps.get(sender) || 0
         if (Date.now() - lastSent < MIN_THROTTLE_MS) continue

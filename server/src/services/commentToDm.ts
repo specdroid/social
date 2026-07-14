@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import { replyToComment, sendMessengerDM, sendInstagramDM } from './metaGraph'
 import { log } from '../utils/logger'
+import { matchAnyTrigger } from './triggerMatch'
 
 const prisma = new PrismaClient()
 
@@ -61,8 +62,8 @@ async function handleFeedChange(
   })
 
   for (const rule of rules) {
-    const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim().toLowerCase()).filter(Boolean)
-    if (!triggers.some(t => message.includes(t))) continue
+    const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim()).filter(Boolean)
+    if (!matchAnyTrigger(message, triggers, rule.triggerMode || 'anywhere')) continue
 
     const user = await prisma.user.findUnique({
       where: { id: rule.userId },
@@ -118,8 +119,8 @@ async function handleMessagingEvent(
   })
 
   for (const rule of rules) {
-    const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim().toLowerCase()).filter(Boolean)
-    if (!triggers.some(t => messageText.includes(t))) continue
+    const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim()).filter(Boolean)
+    if (!matchAnyTrigger(messageText, triggers, rule.triggerMode || 'anywhere')) continue
 
     const user = await prisma.user.findUnique({
       where: { id: rule.userId },

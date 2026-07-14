@@ -115,6 +115,7 @@ model AutomationRule {
   platform      String
   triggerType   String
   triggerValue  String
+  triggerMode   String   @default("anywhere")
   actionType    String
   actionPayload String
   isActive      Boolean  @default(true)

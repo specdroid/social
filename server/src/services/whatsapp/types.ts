@@ -13,6 +13,7 @@ export interface CreateRuleWizard {
   name: string
   platform?: number
   triggerValues?: string[]
+  triggerMode?: number
   contactJids?: string[]
   contactGroupIds?: string[]
   contactGroupNames?: string[]

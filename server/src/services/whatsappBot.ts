@@ -20,6 +20,7 @@ import { env } from '../config/env'
 import { publishPost } from './metaGraph'
 import { chatCompletion } from './omniroute'
 import { sendToContact, syncContactsAndDialogs, getChannels, getMyBots, getDialogs, getMessages } from './telegramClient'
+import { matchAnyTrigger } from './triggerMatch'
 
 const prisma = new PrismaClient()
 const AUTH_DIR = path.resolve(process.cwd(), '../auth_info_baileys')
@@ -1332,8 +1333,8 @@ _Example:_ ws test welcome bot: hello
         return true
       }
 
-      const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim().toLowerCase()).filter(Boolean)
-      if (!triggers.some(t => triggerValue.toLowerCase().includes(t))) {
+      const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim()).filter(Boolean)
+      if (!matchAnyTrigger(triggerValue, triggers, rule.triggerMode || 'anywhere')) {
         await sock.sendMessage(sender, { text: `⚠️ Trigger value "${triggerValue}" does not match rule triggers: ${triggers.join(', ')}` })
         return true
       }
@@ -2185,9 +2186,9 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     log('info', 'whatsapp', 'Main rules loop: rules found', { count: rules.length, sender, textContent: textContent.slice(0, 50) })
     for (const rule of rules) {
-      const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim().toLowerCase()).filter(Boolean)
+      const triggers = rule.triggerValue.split(/[,،]/).map(t => t.trim()).filter(Boolean)
       log('info', 'whatsapp', 'Main rules loop: checking rule', { name: rule.name, triggerValue: rule.triggerValue, triggers, textContent: textContent.slice(0, 50) })
-      if (!triggers.some(t => textContent.toLowerCase().includes(t))) {
+      if (!matchAnyTrigger(textContent, triggers, rule.triggerMode || 'anywhere')) {
         log('info', 'whatsapp', 'Main rules loop: trigger no match', { name: rule.name, triggers })
         continue
       }

@@ -10,6 +10,7 @@ interface AutomationRule {
   platform: string
   triggerType: string
   triggerValue: string
+  triggerMode: string
   actionType: string
   actionPayload: string
   isActive: boolean
@@ -35,6 +36,7 @@ export function AutomationRules() {
     platform: 'facebook',
     triggerType: 'keyword_comment',
     triggerValue: '',
+    triggerMode: 'anywhere',
     actionType: 'send_dm',
     actionPayload: '{"replyText":"","dmText":""}',
     replyText: '',
@@ -243,6 +245,7 @@ export function AutomationRules() {
       platform: rule.platform,
       triggerType: rule.triggerType,
       triggerValue: rule.triggerValue,
+      triggerMode: rule.triggerMode || 'anywhere',
       actionType: rule.actionType,
       actionPayload: rule.actionPayload,
       replyText: payload.replyText || '',
@@ -275,6 +278,7 @@ export function AutomationRules() {
       platform: 'facebook',
       triggerType: 'keyword_comment',
       triggerValue: '',
+      triggerMode: 'anywhere',
       actionType: 'send_dm',
       actionPayload: '{"replyText":"","dmText":""}',
       replyText: '',
@@ -621,6 +625,7 @@ export function AutomationRules() {
               </div>
             )}
             {!isFacebookFeed && (
+              <>
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Trigger Words (comma-separated)</label>
                 <input
@@ -631,6 +636,18 @@ export function AutomationRules() {
                   className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 text-sm focus:outline-none focus:border-zinc-500"
                 />
               </div>
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Trigger Match Mode</label>
+                <select
+                  value={formData.triggerMode}
+                  onChange={(e) => setFormData({ ...formData, triggerMode: e.target.value })}
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 text-sm focus:outline-none focus:border-zinc-500"
+                >
+                  <option value="beginning">Beginning of sentence</option>
+                  <option value="anywhere">Anywhere (exact word)</option>
+                </select>
+              </div>
+              </>
             )}
             {isFacebookFeed && (
               <div className="md:col-span-2">
@@ -846,7 +863,7 @@ export function AutomationRules() {
                   <td className="px-4 py-3 text-zinc-50 whitespace-nowrap">{rule.name}</td>
                   <td className="px-4 py-3 text-zinc-400 capitalize whitespace-nowrap">{rule.platform}{rule.actionType === 'facebook_feed' ? ' (Feed)' : ''}</td>
                   <td className="px-4 py-3 text-zinc-400 whitespace-nowrap">
-                    {rule.triggerType} = "{rule.triggerValue}"
+                    "{rule.triggerValue}" <span className="text-zinc-500 text-xs">({rule.triggerMode || 'anywhere'})</span>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <button onClick={() => toggleRule(rule)}>

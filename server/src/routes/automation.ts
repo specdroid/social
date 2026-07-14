@@ -16,7 +16,7 @@ router.get('/rules', requireAuth, async (req: AuthRequest, res: Response) => {
 })
 
 router.post('/rules', requireAuth, checkPremiumTier, async (req: AuthRequest, res: Response) => {
-  const { name, platform, triggerType, triggerValue, actionType, actionPayload } = req.body
+  const { name, platform, triggerType, triggerValue, triggerMode, actionType, actionPayload } = req.body
 
   const rule = await prisma.automationRule.create({
     data: {
@@ -25,6 +25,7 @@ router.post('/rules', requireAuth, checkPremiumTier, async (req: AuthRequest, re
       platform,
       triggerType,
       triggerValue,
+      triggerMode: triggerMode || 'anywhere',
       actionType,
       actionPayload: typeof actionPayload === 'string' ? actionPayload : JSON.stringify(actionPayload),
     },
@@ -35,7 +36,7 @@ router.post('/rules', requireAuth, checkPremiumTier, async (req: AuthRequest, re
 
 router.put('/rules/:id', requireAuth, checkPremiumTier, async (req: AuthRequest, res: Response) => {
   const id = req.params.id as string
-  const { name, platform, triggerType, triggerValue, actionType, actionPayload, isActive } = req.body
+  const { name, platform, triggerType, triggerValue, triggerMode, actionType, actionPayload, isActive } = req.body
 
   const existing = await prisma.automationRule.findFirst({
     where: { id, userId: req.userId! },
@@ -49,6 +50,7 @@ router.put('/rules/:id', requireAuth, checkPremiumTier, async (req: AuthRequest,
       ...(platform !== undefined && { platform }),
       ...(triggerType !== undefined && { triggerType }),
       ...(triggerValue !== undefined && { triggerValue }),
+      ...(triggerMode !== undefined && { triggerMode }),
       ...(actionType !== undefined && { actionType }),
       ...(actionPayload !== undefined && { actionPayload: typeof actionPayload === 'string' ? actionPayload : JSON.stringify(actionPayload) }),
       ...(isActive !== undefined && { isActive }),
