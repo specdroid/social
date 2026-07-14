@@ -81,7 +81,27 @@ router.delete('/users/:id', async (req: AuthRequest, res: Response) => {
     throw new AppError(400, 'Cannot delete your own account')
   }
 
-  await prisma.user.delete({ where: { id } })
+  await prisma.$transaction([
+    prisma.session.deleteMany({ where: { userId: id } }),
+    prisma.facebookPage.deleteMany({ where: { userId: id } }),
+    prisma.facebookAccount.deleteMany({ where: { userId: id } }),
+    prisma.instagramAccount.deleteMany({ where: { userId: id } }),
+    prisma.scheduledPost.deleteMany({ where: { userId: id } }),
+    prisma.automationRule.deleteMany({ where: { userId: id } }),
+    prisma.whatsAppSession.deleteMany({ where: { userId: id } }),
+    prisma.facebookPostLog.deleteMany({ where: { userId: id } }),
+    prisma.omnirouteConfig.deleteMany({ where: { userId: id } }),
+    prisma.telegramSession.deleteMany({ where: { userId: id } }),
+    prisma.telegramContact.deleteMany({ where: { userId: id } }),
+    prisma.telegramConversation.deleteMany({ where: { userId: id } }),
+    prisma.savedGroupList.deleteMany({ where: { userId: id } }),
+    prisma.allowedNumber.deleteMany({ where: { userId: id } }),
+    prisma.allowedGroup.deleteMany({ where: { userId: id } }),
+    prisma.whatsAppContact.deleteMany({ where: { userId: id } }),
+    prisma.whatsAppImportedContact.deleteMany({ where: { userId: id } }),
+    prisma.whatsAppContactGroup.deleteMany({ where: { userId: id } }),
+    prisma.user.delete({ where: { id } }),
+  ])
 
   res.json({ ok: true })
 })
