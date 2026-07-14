@@ -18,7 +18,7 @@ import { delay, randomDelay } from '../../utils/delay'
 import { env } from '../../config/env'
 import { publishPost } from '../metaGraph'
 import { chatCompletion } from '../omniroute'
-import { sendToContact, syncContactsAndDialogs, getChannels, getMyBots, getDialogs, getMessages } from '../telegramClient'
+import { sendToContact, syncContactsAndDialogs, getChannels, getMyBots, getDialogs, getMessages, findChannelId, sendToChannel } from '../telegramClient'
 import type { ContactEntry, CreateRuleWizard, ChannelSelection, ConnectionState } from './types'
 import { matchAnyTrigger } from '../triggerMatch'
 
@@ -816,7 +816,7 @@ export class UserWhatsAppManager {
     // ── -help ──
     if (/^-help$/i.test(textContent.trim())) {
       await sock.sendMessage(sender, {
-        text: `📋 *Commands*\n\n🔹 *fb: content* — Post to Facebook Page\n🔹 *ws ai: prompt* — AI chat\n🔹 *-help* — Show help\n🔹 *ws create rule <name>* — Create automation rule\n🔹 *ws create <name> save <gr1, gr2>* — Save group list\n🔹 *ws get groups* — List WhatsApp groups\n🔹 *ws get rules* — List automation rules\n🔹 *ws gr1, gr2: content* — Forward to groups\n🔹 *ws list <name>: content* — Send to saved list\n🔹 *ws test <rule>: <trigger>* — Test rule\n🔹 *tel get channels* — List Telegram channels\n🔹 *tel get <channel> [limit] [time]* — Fetch messages\n🔹 *tel send <contact>: <message>* — Send Telegram msg`,
+        text: `📋 *Commands*\n\n🔹 *fb: content* — Post to Facebook Page\n🔹 *ws ai: prompt* — AI chat\n🔹 *-help* — Show help\n🔹 *ws create rule <name>* — Create automation rule\n🔹 *ws create <name> save <gr1, gr2>* — Save group list\n🔹 *ws get groups* — List WhatsApp groups\n🔹 *ws get rules* — List automation rules\n🔹 *ws gr1, gr2: content* — Forward to groups\n🔹 *ws list <name>: content* — Send to saved list\n🔹 *ws test <rule>: <trigger>* — Test rule\n🔹 *tel get channels* — List Telegram channels\n🔹 *tel <channel>: <content>* — Send to Telegram channel\n🔹 *tel get <channel> [limit] [time]* — Fetch messages\n🔹 *tel send <contact>: <message>* — Send Telegram msg`,
       })
       return true
     }
@@ -966,7 +966,7 @@ export class UserWhatsAppManager {
 
     // ── ws help ──
     if (/^ws\s+(help|-h)$/i.test(textContent.trim())) {
-      await sock.sendMessage(sender, { text: '🔹 ws get groups\n🔹 ws get rules\n🔹 ws create rule <name>\n🔹 ws delete rule <name>\n🔹 ws create <name> save <gr1, gr2>\n🔹 ws delete list <name>\n🔹 ws list <name>: <content>\n🔹 ws <gr1, gr2>: <content>\n🔹 ws test <rule>: <trigger>\n🔹 ws ai: <prompt>' })
+      await sock.sendMessage(sender, { text: '🔹 ws get groups\n🔹 ws get rules\n🔹 ws create rule <name>\n🔹 ws delete rule <name>\n🔹 ws create <name> save <gr1, gr2>\n🔹 ws delete list <name>\n🔹 ws list <name>: <content>\n🔹 ws <gr1, gr2>: <content>\n🔹 ws test <rule>: <trigger>\n🔹 ws ai: <prompt>\n🔹 tel get channels\n🔹 tel <channel>: <content>' })
       return true
     }
 
@@ -1060,6 +1060,31 @@ export class UserWhatsAppManager {
         }
         await sendToContact(this.userId, contactName, messageText, filePath)
         await sock.sendMessage(sender, { text: `✅ Sent to "${contactName}"` })
+      } catch (err) { await sock.sendMessage(sender, { text: `❌ Telegram error: ${(err as Error).message}` }) }
+      return true
+    }
+
+    // ── tel <channel>: <content> ── send to Telegram channel
+    const telChannelMatch = textContent.match(/^tel\s+(.+?)\s*:\s*(.*)/is)
+    if (telChannelMatch && !textContent.match(/^tel\s+(get|send)\s/i)) {
+      const channelName = telChannelMatch[1].trim()
+      const messageText = telChannelMatch[2]?.trim() || ''
+      try {
+        const channel = await findChannelId(channelName)
+        if (!channel) { await sock.sendMessage(sender, { text: `❌ No channel matches "${channelName}". Use \`tel get channels\` to list.` }); return true }
+        if (!channel.canSend) { await sock.sendMessage(sender, { text: `❌ You can't send messages to "${channel.name}".` }); return true }
+        let filePath: string | undefined
+        if (message.message?.imageMessage || message.message?.documentMessage) {
+          const buffer = await downloadMediaMessage(message, 'buffer', {})
+          let ext = '.bin'
+          if (message.message?.imageMessage) ext = '.jpg'
+          else if (message.message?.documentMessage) ext = path.extname(message.message.documentMessage.fileName || 'file') || '.bin'
+          const fpath = path.resolve(os.tmpdir(), `tel_ch_${Date.now()}${ext}`)
+          fs.writeFileSync(fpath, buffer)
+          filePath = fpath
+        }
+        await sendToChannel(channel.id, messageText, filePath)
+        await sock.sendMessage(sender, { text: `✅ Sent to channel "${channel.name}"` })
       } catch (err) { await sock.sendMessage(sender, { text: `❌ Telegram error: ${(err as Error).message}` }) }
       return true
     }

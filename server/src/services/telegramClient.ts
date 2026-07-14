@@ -235,20 +235,29 @@ export async function getDialogs(): Promise<DialogInfo[]> {
   await ensureReady(activeUserId || '')
   const c = getClient()
   const dialogs = await c.getDialogs({ limit: 100 })
-  return dialogs.map((d) => {
+  const result: DialogInfo[] = dialogs.map((d) => {
     const entity = d.entity as any
     const isChannel = entity?.className === 'Channel'
     const canSend = !isChannel || entity?.adminRights || entity?.creator
     return {
       id: d.id?.toString() || '',
       name: d.name || d.title || 'Unknown',
-      type: d.isUser ? 'user' : d.isGroup ? 'group' : 'channel',
+      type: (d.isUser ? 'user' : d.isGroup ? 'group' : 'channel') as DialogInfo['type'],
       unreadCount: d.unreadCount,
       lastMessage: d.message?.message || null,
       date: d.message?.date ? new Date((d.message.date) * 1000).toISOString() : null,
       phone: entity?.phone || undefined,
       canSend: !!canSend,
     }
+  })
+  return result.sort((a, b) => {
+    if (a.type === 'channel' && b.type !== 'channel') return -1
+    if (a.type !== 'channel' && b.type === 'channel') return 1
+    if (a.type === 'channel' && b.type === 'channel') {
+      if (a.canSend !== b.canSend) return a.canSend ? -1 : 1
+      return a.name.localeCompare(b.name)
+    }
+    return 0
   })
 }
 
@@ -376,12 +385,38 @@ export async function sendToContact(userId: string, contactName: string, text: s
   }
 }
 
-export async function getChannels(): Promise<Array<{ name: string; canSend: boolean }>> {
+export async function findChannelId(name: string): Promise<{ id: string; name: string; canSend: boolean } | null> {
+  const channels = await getChannels()
+  const match = channels.find(c => c.name.toLowerCase() === name.toLowerCase())
+  if (match) return match
+  const partial = channels.find(c => c.name.toLowerCase().includes(name.toLowerCase()))
+  return partial || null
+}
+
+export async function sendToChannel(channelId: string, text: string, filePath?: string): Promise<void> {
+  await ensureReady(activeUserId || '')
+  const c = getClient()
+  const peerId = Number(channelId)
+  if (filePath) {
+    try {
+      await c.sendFile(peerId, { file: filePath, caption: text || undefined })
+    } finally {
+      try { fs.unlinkSync(filePath) } catch { /* ignore */ }
+    }
+  } else {
+    await c.sendMessage(peerId, { message: text })
+  }
+}
+
+export async function getChannels(): Promise<Array<{ name: string; id: string; canSend: boolean }>> {
   const dialogs = await getDialogs()
-  return dialogs.filter((d) => d.type === 'channel').map((d) => ({
-    name: d.name,
-    canSend: d.canSend,
-  }))
+  return dialogs
+    .filter((d) => d.type === 'channel')
+    .map((d) => ({ name: d.name, id: d.id, canSend: d.canSend }))
+    .sort((a, b) => {
+      if (a.canSend !== b.canSend) return a.canSend ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
 }
 
 export async function getMyBots(): Promise<Array<{ name: string; username?: string }>> {
