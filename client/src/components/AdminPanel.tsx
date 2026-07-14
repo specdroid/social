@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Shield, ShieldCheck, ShieldOff, Trash2, UserPlus, Crown } from 'lucide-react'
+import { Shield, ShieldCheck, ShieldOff, Trash2, UserPlus, Crown, AlertTriangle } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 
 interface User {
@@ -12,6 +12,60 @@ interface User {
   createdAt: string
 }
 
+function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+  danger,
+}: {
+  open: boolean
+  title: string
+  message: string
+  confirmLabel: string
+  onConfirm: () => void
+  onCancel: () => void
+  danger?: boolean
+}) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onCancel}>
+      <div
+        className="w-full max-w-sm bg-zinc-900 rounded-xl border border-zinc-800 p-6 space-y-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-lg ${danger ? 'bg-red-500/10' : 'bg-zinc-800'}`}>
+            <AlertTriangle className={`w-5 h-5 ${danger ? 'text-red-400' : 'text-zinc-400'}`} />
+          </div>
+          <h2 className="text-lg font-bold text-zinc-50">{title}</h2>
+        </div>
+        <p className="text-sm text-zinc-400">{message}</p>
+        <div className="flex gap-2 pt-2">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2 bg-zinc-800 text-zinc-400 rounded-lg text-sm hover:bg-zinc-700 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+              danger
+                ? 'bg-red-500 text-white hover:bg-red-600'
+                : 'bg-zinc-50 text-zinc-900 hover:bg-zinc-200'
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function AdminPanel() {
   const { get, post, patch, del } = useApi()
   const [users, setUsers] = useState<User[]>([])
@@ -22,6 +76,7 @@ export function AdminPanel() {
   const [newPassword, setNewPassword] = useState('')
   const [newName, setNewName] = useState('')
   const [newTier, setNewTier] = useState<'free' | 'premium'>('free')
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
 
   const loadUsers = async () => {
     try {
@@ -65,10 +120,11 @@ export function AdminPanel() {
     }
   }
 
-  const handleDelete = async (userId: string) => {
-    if (!confirm('Delete this user?')) return
+  const handleDelete = async () => {
+    if (!deleteTarget) return
     try {
-      await del(`/api/admin/users/${userId}`)
+      await del(`/api/admin/users/${deleteTarget.id}`)
+      setDeleteTarget(null)
       loadUsers()
     } catch {
       setError('Failed to delete user')
@@ -163,7 +219,7 @@ export function AdminPanel() {
                       {user.tier === 'premium' ? <ShieldOff className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
                     </button>
                     <button
-                      onClick={() => handleDelete(user.id)}
+                      onClick={() => setDeleteTarget(user)}
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
                       title="Delete user"
                     >
@@ -182,8 +238,11 @@ export function AdminPanel() {
       </div>
 
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-sm bg-zinc-900 rounded-xl border border-zinc-800 p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
+          <div
+            className="w-full max-w-sm bg-zinc-900 rounded-xl border border-zinc-800 p-6 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 className="text-lg font-bold text-zinc-50">Create User</h2>
             <form onSubmit={handleCreateUser} className="space-y-3">
               <input
@@ -236,6 +295,16 @@ export function AdminPanel() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete User"
+        message={`Are you sure you want to delete ${deleteTarget?.email}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }
