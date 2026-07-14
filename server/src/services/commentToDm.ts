@@ -49,10 +49,14 @@ async function handleFeedChange(
 ): Promise<void> {
   const message = value.message?.toLowerCase() || ''
 
+  const fbPage = await prisma.facebookPage.findUnique({ where: { pageId } })
+  const userId = fbPage?.userId
+
   const rules = await prisma.automationRule.findMany({
     where: {
       isActive: true,
       triggerType: 'keyword_comment',
+      ...(userId ? { userId } : {}),
     },
   })
 
@@ -68,17 +72,17 @@ async function handleFeedChange(
     if (!user) continue
 
     if (rule.platform === 'facebook' || rule.platform === 'both') {
-      const fbPage = user.facebookPages.find((p) => p.pageId === pageId)
-      if (fbPage?.accessToken && value.comment_id) {
+      const matchedFbPage = user.facebookPages.find((p) => p.pageId === pageId)
+      if (matchedFbPage?.accessToken && value.comment_id) {
         try {
           const payload = parseActionPayload(rule.actionPayload)
 
           if (payload.replyText) {
-            await replyToComment(value.comment_id, payload.replyText, fbPage.accessToken)
+            await replyToComment(value.comment_id, payload.replyText, matchedFbPage.accessToken)
           }
 
           if (payload.dmText && value.from?.id) {
-            await sendMessengerDM(value.from.id, payload.dmText, fbPage.accessToken)
+            await sendMessengerDM(value.from.id, payload.dmText, matchedFbPage.accessToken)
           }
 
           log('info', 'meta_api', 'Comment trigger fired', {
@@ -98,14 +102,18 @@ async function handleFeedChange(
 
 async function handleMessagingEvent(
   event: WebhookMessaging,
-  _pageId: string
+  pageId: string
 ): Promise<void> {
   const messageText = event.message?.text?.toLowerCase() || event.postback?.payload?.toLowerCase() || ''
+
+  const fbPage = await prisma.facebookPage.findUnique({ where: { pageId } })
+  const userId = fbPage?.userId
 
   const rules = await prisma.automationRule.findMany({
     where: {
       isActive: true,
       triggerType: 'keyword_comment',
+      ...(userId ? { userId } : {}),
     },
   })
 

@@ -1,12 +1,13 @@
-import { Router, Request, Response } from 'express'
+import { Router, Response } from 'express'
 import { requireAuth } from '../middleware/auth'
+import { AuthRequest } from '../middleware/checkPremium'
 import { AppError } from '../middleware/errorHandler'
 import { getConfig, updateConfig, chatCompletion } from '../services/omniroute'
 
 const router = Router()
 
-router.get('/config', requireAuth, async (_req: Request, res: Response) => {
-  const config = await getConfig()
+router.get('/config', requireAuth, async (req: AuthRequest, res: Response) => {
+  const config = await getConfig(req.userId!)
   res.json({
     baseUrl: config.baseUrl,
     hasApiKey: !!config.apiKey,
@@ -15,7 +16,7 @@ router.get('/config', requireAuth, async (_req: Request, res: Response) => {
   })
 })
 
-router.put('/config', requireAuth, async (req: Request, res: Response) => {
+router.put('/config', requireAuth, async (req: AuthRequest, res: Response) => {
   const { baseUrl, apiKey, model, systemPrompt } = req.body
   if (baseUrl !== undefined && (typeof baseUrl !== 'string' || !baseUrl.startsWith('http'))) {
     throw new AppError(400, 'baseUrl must be a valid URL starting with http')
@@ -30,7 +31,7 @@ router.put('/config', requireAuth, async (req: Request, res: Response) => {
     throw new AppError(400, 'systemPrompt must be a string')
   }
 
-  const config = await updateConfig({ baseUrl, apiKey, model, systemPrompt })
+  const config = await updateConfig(req.userId!, { baseUrl, apiKey, model, systemPrompt })
   res.json({
     baseUrl: config.baseUrl,
     hasApiKey: !!config.apiKey,
@@ -39,7 +40,7 @@ router.put('/config', requireAuth, async (req: Request, res: Response) => {
   })
 })
 
-router.post('/chat', requireAuth, async (req: Request, res: Response) => {
+router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
   const { messages } = req.body
   if (!Array.isArray(messages) || messages.length === 0) {
     throw new AppError(400, 'messages must be a non-empty array of {role, content}')
@@ -50,12 +51,12 @@ router.post('/chat', requireAuth, async (req: Request, res: Response) => {
     }
   }
 
-  const reply = await chatCompletion(messages)
+  const reply = await chatCompletion(messages, req.userId!)
   res.json({ reply })
 })
 
-router.get('/status', requireAuth, async (_req: Request, res: Response) => {
-  const config = await getConfig()
+router.get('/status', requireAuth, async (req: AuthRequest, res: Response) => {
+  const config = await getConfig(req.userId!)
   if (!config.apiKey) {
     res.json({ ok: false, error: 'API key not configured' })
     return
@@ -63,7 +64,7 @@ router.get('/status', requireAuth, async (_req: Request, res: Response) => {
 
   try {
     const testMessages = [{ role: 'user', content: 'Say exactly: OK' }]
-    const reply = await chatCompletion(testMessages)
+    const reply = await chatCompletion(testMessages, req.userId!)
     const ok = reply.trim().toLowerCase() === 'ok'
     res.json({ ok, reply: reply.slice(0, 100) })
   } catch (err: any) {

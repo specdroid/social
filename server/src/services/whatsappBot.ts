@@ -79,6 +79,12 @@ function saveContactsToDisk() {
   }
 }
 loadContactsFromDisk()
+
+async function getWhatsAppSessionUserId(): Promise<string | null> {
+  const session = await prisma.whatsAppSession.findFirst({ where: { isConnected: true } })
+  return session?.userId || null
+}
+
 const MAX_RECONNECT_ATTEMPTS = 3
 
 const threadTimestamps = new Map<string, number>()
@@ -942,7 +948,8 @@ async function isAllowedSender(sock: any, sender: string, payload: any, isGroup 
       const subject = (groupMeta as any)?.subject || ''
       for (const listName of payload.savedGroupListNames) {
         try {
-          const savedList = await prisma.savedGroupList.findUnique({ where: { name: listName } })
+          const savedListUserId = await getWhatsAppSessionUserId()
+          const savedList = savedListUserId ? await prisma.savedGroupList.findUnique({ where: { name_userId: { name: listName, userId: savedListUserId } } }) : null
           if (!savedList) { log('info', 'whatsapp', 'isAllowedSender: savedGroupList not found', { listName }); continue }
           const groupNames: string[] = JSON.parse(savedList.groups)
           log('info', 'whatsapp', 'isAllowedSender savedGroupListNames', { sender, normSender, listName, groupNames, subject })
@@ -1028,7 +1035,8 @@ async function processCommands(
         const resolvedContactGroupIds: string[] = []
         const resolvedContactGroupNames: string[] = []
         const resolvedSavedListNames: string[] = []
-        const allSavedLists = await prisma.savedGroupList.findMany()
+        const wizardUserId = await getWhatsAppSessionUserId()
+        const allSavedLists = wizardUserId ? await prisma.savedGroupList.findMany({ where: { userId: wizardUserId } }) : []
         for (const name of names) {
           const cg = contactGroups.find(g => g.name.toLowerCase() === name.toLowerCase())
           if (cg) {
@@ -1102,12 +1110,12 @@ async function processCommands(
         }
 
         try {
-          const user = await prisma.user.findFirst()
-          if (!user) throw new Error('No user found in database')
+          const userIdForRule = await getWhatsAppSessionUserId()
+          if (!userIdForRule) throw new Error('No connected WhatsApp session found')
 
           await prisma.automationRule.create({
             data: {
-              userId: user.id,
+              userId: userIdForRule,
               name: wizard.name,
               platform,
               triggerType: 'keyword_comment',
@@ -1158,7 +1166,8 @@ async function processCommands(
   }
   if (/^ws get group lists( content)?$/i.test(textContent.trim())) {
     const showContent = /content$/i.test(textContent.trim())
-    const lists = await prisma.savedGroupList.findMany({ orderBy: { createdAt: 'desc' } })
+    const groupListsUserId = await getWhatsAppSessionUserId()
+    const lists = groupListsUserId ? await prisma.savedGroupList.findMany({ where: { userId: groupListsUserId }, orderBy: { createdAt: 'desc' } }) : []
     if (lists.length === 0) {
       await sock.sendMessage(sender, { text: 'No saved group lists.' })
       return true
@@ -1183,11 +1192,12 @@ async function processCommands(
   }
   if (/^ws get (all )?rules$/i.test(textContent.trim())) {
     const allMode = /all/i.test(textContent.trim())
-    const rules = await prisma.automationRule.findMany({
-      where: allMode ? { isActive: true } : { platform: 'whatsapp', isActive: true },
+    const rulesUserId = await getWhatsAppSessionUserId()
+    const rules = rulesUserId ? await prisma.automationRule.findMany({
+      where: allMode ? { userId: rulesUserId, isActive: true } : { userId: rulesUserId, platform: 'whatsapp', isActive: true },
       orderBy: { name: 'asc' },
       select: { name: true, platform: true, triggerType: true, triggerValue: true },
-    })
+    }) : []
     if (rules.length === 0) {
       await sock.sendMessage(sender, { text: allMode ? 'No active automation rules.' : 'No active WhatsApp automation rules.' })
       return true
@@ -1205,9 +1215,10 @@ async function processCommands(
   const triggersMatch = textContent.match(/^ws get (.+?) triggers$/is)
   if (triggersMatch) {
     const ruleName = triggersMatch[1].trim()
-    const rule = await prisma.automationRule.findFirst({
-      where: { name: ruleName, platform: 'whatsapp', isActive: true },
-    })
+    const triggersUserId = await getWhatsAppSessionUserId()
+    const rule = triggersUserId ? await prisma.automationRule.findFirst({
+      where: { userId: triggersUserId, name: ruleName, platform: 'whatsapp', isActive: true },
+    }) : null
     if (!rule) {
       await sock.sendMessage(sender, { text: `❌ Rule "${ruleName}" not found or inactive. Use \`ws create rule\` to create one.` })
       return true
@@ -1312,9 +1323,10 @@ _Example:_ ws test welcome bot: hello
     if (!ruleName) return true
 
     try {
-      const rule = await prisma.automationRule.findFirst({
-        where: { name: ruleName, isActive: true, platform: 'whatsapp' },
-      })
+      const testUserId = await getWhatsAppSessionUserId()
+      const rule = testUserId ? await prisma.automationRule.findFirst({
+        where: { userId: testUserId, name: ruleName, isActive: true, platform: 'whatsapp' },
+      }) : null
       if (!rule) {
         await sock.sendMessage(sender, { text: `❌ Rule "${ruleName}" not found or inactive. Use \`ws create rule\` to create one.` })
         return true
@@ -1403,7 +1415,8 @@ _Example:_ ws test welcome bot: hello
   if (deleteRuleMatch) {
     const ruleName = deleteRuleMatch[1].trim()
     try {
-      const rule = await prisma.automationRule.findFirst({ where: { name: ruleName } })
+      const deleteUserId = await getWhatsAppSessionUserId()
+      const rule = deleteUserId ? await prisma.automationRule.findFirst({ where: { userId: deleteUserId, name: ruleName } }) : null
       if (!rule) {
         await sock.sendMessage(sender, { text: `❌ Rule "${ruleName}" not found.` })
         return true
@@ -1428,10 +1441,15 @@ _Example:_ ws test welcome bot: hello
     const groupNames = groupsRaw.split(',').map((s) => s.trim()).filter(Boolean)
     if (!listName || groupNames.length === 0) return true
     try {
+      const upsertUserId = await getWhatsAppSessionUserId()
+      if (!upsertUserId) {
+        await sock.sendMessage(sender, { text: '❌ No connected WhatsApp session found.' })
+        return true
+      }
       await prisma.savedGroupList.upsert({
-        where: { name: listName },
+        where: { name_userId: { name: listName, userId: upsertUserId } },
         update: { groups: JSON.stringify(groupNames) },
-        create: { name: listName, groups: JSON.stringify(groupNames) },
+        create: { name: listName, groups: JSON.stringify(groupNames), userId: upsertUserId },
       })
       await sock.sendMessage(sender, { text: `✅ Saved list "${listName}" (${groupNames.length} groups)\n${groupNames.join(', ')}` })
     } catch (err) {
@@ -1449,7 +1467,8 @@ _Example:_ ws test welcome bot: hello
   if (deleteListMatch) {
     const listName = deleteListMatch[1].trim()
     try {
-      const list = await prisma.savedGroupList.findUnique({ where: { name: listName } })
+      const deleteListUserId = await getWhatsAppSessionUserId()
+      const list = deleteListUserId ? await prisma.savedGroupList.findUnique({ where: { name_userId: { name: listName, userId: deleteListUserId } } }) : null
       if (!list) {
         await sock.sendMessage(sender, { text: `❌ List "${listName}" not found.` })
         return true
@@ -1474,7 +1493,8 @@ _Example:_ ws test welcome bot: hello
     const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
     if (!content && !hasMedia) return true
 
-    const savedList = await prisma.savedGroupList.findUnique({ where: { name: listName } })
+    const savedListUserId = await getWhatsAppSessionUserId()
+    const savedList = savedListUserId ? await prisma.savedGroupList.findUnique({ where: { name_userId: { name: listName, userId: savedListUserId } } }) : null
     if (!savedList) {
       await sock.sendMessage(sender, { text: `❌ List "${listName}" not found` })
       return true
@@ -1751,11 +1771,12 @@ ${baseUrl}/facebook`,
   // ── tel get contacts ── list all synced Telegram contacts ──
   if (/^tel\s+get\s+contacts$/i.test(textContent.trim())) {
     try {
-      let contacts = await prisma.telegramContact.findMany({ orderBy: { name: 'asc' } })
+      const telContactsUserId = await getWhatsAppSessionUserId()
+      let contacts = telContactsUserId ? await prisma.telegramContact.findMany({ where: { userId: telContactsUserId }, orderBy: { name: 'asc' } }) : []
       if (contacts.length === 0) {
         await sock.sendMessage(sender, { text: '🔄 No contacts cached — syncing from Telegram...' })
-        await syncContactsAndDialogs()
-        contacts = await prisma.telegramContact.findMany({ orderBy: { name: 'asc' } })
+        await syncContactsAndDialogs(telContactsUserId!)
+        contacts = telContactsUserId ? await prisma.telegramContact.findMany({ where: { userId: telContactsUserId }, orderBy: { name: 'asc' } }) : []
       }
       if (contacts.length === 0) {
         await sock.sendMessage(sender, { text: '📇 No Telegram contacts found. Make sure your Telegram account has contacts.' })
@@ -1870,7 +1891,9 @@ ${baseUrl}/facebook`,
       }
 
       await sock.sendMessage(sender, { text: `📨 Sending to "${contactName}"...` })
-      await sendToContact(contactName, messageText, filePath ?? undefined)
+      const telSendUserId = await getWhatsAppSessionUserId()
+      if (!telSendUserId) { await sock.sendMessage(sender, { text: '❌ No active Telegram session' }); return true }
+      await sendToContact(telSendUserId, contactName, messageText, filePath ?? undefined)
       await sock.sendMessage(sender, { text: `✅ Message sent to "${contactName}"` })
       log('info', 'whatsapp', 'tel_send: sent', { contact: contactName, hasMedia })
     } catch (err) {
@@ -1887,7 +1910,8 @@ ${baseUrl}/facebook`,
     const hasMedia = !!(message.message?.imageMessage || message.message?.documentMessage)
     if (!fbContent && !hasMedia) return true
 
-    const fbPage = await prisma.facebookPage.findFirst()
+    const fbUserId = await getWhatsAppSessionUserId()
+    const fbPage = fbUserId ? await prisma.facebookPage.findFirst({ where: { userId: fbUserId } }) : null
     if (!fbPage) {
       await sock.sendMessage(sender, { text: '❌ No Facebook page connected.' })
       log('warn', 'whatsapp', 'facebook_page: no page connected')
@@ -2017,7 +2041,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       let allowed = isOwner
       if (!allowed) {
         try {
-          const allowedNum = await prisma.allowedNumber.findUnique({ where: { phone: normSender } })
+          const gatewayUserId = await getWhatsAppSessionUserId()
+          const allowedNum = gatewayUserId ? await prisma.allowedNumber.findUnique({ where: { phone_userId: { phone: normSender, userId: gatewayUserId } } }) : null
           allowed = !!allowedNum
           log('info', 'whatsapp', 'Gateway allowed number check', { phone: normSender, allowed })
         } catch { /* ignore */ }
@@ -2029,7 +2054,8 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
         log('info', 'whatsapp', 'Gateway group check', { sender, groupName, foundInFetch: !!groupMeta })
         if (groupName) {
           try {
-            const allAllowedGrps = await prisma.allowedGroup.findMany()
+            const allowedGroupsUserId = await getWhatsAppSessionUserId()
+            const allAllowedGrps = allowedGroupsUserId ? await prisma.allowedGroup.findMany({ where: { userId: allowedGroupsUserId } }) : []
             const allowedGrp = allAllowedGrps.find(g => g.name.toLowerCase() === groupName.toLowerCase())
             log('info', 'whatsapp', 'Gateway allowed group check', { name: groupName, allowed: !!allowedGrp })
             if (allowedGrp) {
@@ -2063,13 +2089,15 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
       log('info', 'whatsapp', 'Text menu handler', { textContent, trimmed, num, isNum: !isNaN(num) })
       if (!isNaN(num) && num > 0) {
         // Look up rules to find if this sender has an active interactive rule
-        const rules = await prisma.automationRule.findMany({
+        const textMenuUserId = await getWhatsAppSessionUserId()
+        const rules = textMenuUserId ? await prisma.automationRule.findMany({
           where: {
+            userId: textMenuUserId,
             isActive: true,
             platform: 'whatsapp',
             triggerType: 'keyword_comment',
           },
-        })
+        }) : []
           log('info', 'whatsapp', 'Text menu: rules found', { count: rules.length })
         for (const rule of rules) {
           let payload: any
@@ -2096,13 +2124,15 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     if (selectedId) {
       log('info', 'whatsapp', 'Follow-up: selectedId present', { selectedId, sender })
-      const rules = await prisma.automationRule.findMany({
+      const followupUserId = await getWhatsAppSessionUserId()
+      const rules = followupUserId ? await prisma.automationRule.findMany({
         where: {
+          userId: followupUserId,
           isActive: true,
           platform: 'whatsapp',
           triggerType: 'keyword_comment',
         },
-      })
+      }) : []
       log('info', 'whatsapp', 'Follow-up: rules found', { count: rules.length })
       for (const rule of rules) {
         let payload: any
@@ -2143,13 +2173,15 @@ async function handleIncomingMessage(sock: WASocket, message: WAMessage): Promis
 
     if (!textContent) return
 
-    const rules = await prisma.automationRule.findMany({
+    const mainRulesUserId = await getWhatsAppSessionUserId()
+    const rules = mainRulesUserId ? await prisma.automationRule.findMany({
       where: {
+        userId: mainRulesUserId,
         isActive: true,
         platform: 'whatsapp',
         triggerType: 'keyword_comment',
       },
-    })
+    }) : []
 
     log('info', 'whatsapp', 'Main rules loop: rules found', { count: rules.length, sender, textContent: textContent.slice(0, 50) })
     for (const rule of rules) {

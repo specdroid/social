@@ -29,8 +29,15 @@ model User {
   scheduledPosts       ScheduledPost[]
   automationRules      AutomationRule[]
   whatsappSessions     WhatsAppSession[]
-   sessions             Session[]
-   facebookPostLogs     FacebookPostLog[]
+  sessions             Session[]
+  facebookPostLogs     FacebookPostLog[]
+  omnirouteConfigs     OmnirouteConfig[]
+  telegramSessions     TelegramSession[]
+  telegramContacts     TelegramContact[]
+  telegramConversations TelegramConversation[]
+  savedGroupLists      SavedGroupList[]
+  allowedNumbers       AllowedNumber[]
+  allowedGroups        AllowedGroup[]
 }
 
 model Session {
@@ -86,6 +93,8 @@ model WhatsAppSession {
   isConnected Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@unique([userId])
 }
 
 model AutomationRule {
@@ -133,10 +142,14 @@ model FacebookPostLog {
 
 model SavedGroupList {
   id        String   @id @default(cuid())
-  name      String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  name      String
   groups    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([name, userId])
 }
 
 model SystemLog {
@@ -150,14 +163,22 @@ model SystemLog {
 
 model AllowedNumber {
   id        String   @id @default(cuid())
-  phone     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  phone     String
   createdAt DateTime @default(now())
+
+  @@unique([phone, userId])
 }
 
 model AllowedGroup {
   id        String   @id @default(cuid())
-  name      String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  name      String
   createdAt DateTime @default(now())
+
+  @@unique([name, userId])
 }
 
 model RetryQueue {
@@ -173,36 +194,50 @@ model RetryQueue {
 
 model OmnirouteConfig {
   id           Int      @id @default(autoincrement())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
   baseUrl      String   @default("https://omniroutelb.duckdns.org/v1")
   apiKey       String   @default("")
   model        String   @default("auto/coding:free")
   systemPrompt String   @default("")
   updatedAt    DateTime @updatedAt
+
+  @@unique([userId])
 }
 
 model TelegramSession {
   id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
   session    String   @default("")
   phone      String?
   isLoggedIn Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  @@unique([userId])
 }
 
 model TelegramContact {
   id         String   @id @default(cuid())
-  tgId       String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  tgId       String
   name       String
   phone      String?
   username   String?
   lastSyncAt DateTime @default(now())
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  @@unique([tgId, userId])
 }
 
 model TelegramConversation {
   id            String   @id @default(cuid())
-  tgId          String   @unique
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  tgId          String
   name          String
   type          String
   unreadCount   Int      @default(0)
@@ -211,4 +246,6 @@ model TelegramConversation {
   lastSyncAt    DateTime @default(now())
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@unique([tgId, userId])
 }

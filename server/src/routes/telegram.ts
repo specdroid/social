@@ -1,7 +1,6 @@
 import { Router, Response } from 'express'
 import multer from 'multer'
 import path from 'path'
-import fs from 'fs'
 import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import {
@@ -27,8 +26,8 @@ const tgUpload = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
 })
 
-router.get('/status', requireAuth, async (_req: AuthRequest, res: Response) => {
-  const status = await getStatus()
+router.get('/status', requireAuth, async (req: AuthRequest, res: Response) => {
+  const status = await getStatus(req.userId!)
   res.json(status)
 })
 
@@ -38,7 +37,7 @@ router.post('/send-code', requireAuth, async (req: AuthRequest, res: Response) =
     res.status(400).json({ error: 'Phone number is required' })
     return
   }
-  await sendCode(phone)
+  await sendCode(req.userId!, phone)
   res.json({ success: true })
 })
 
@@ -48,7 +47,7 @@ router.post('/verify-code', requireAuth, async (req: AuthRequest, res: Response)
     res.status(400).json({ error: 'Verification code is required' })
     return
   }
-  const result = await signIn(code)
+  const result = await signIn(req.userId!, code)
   res.json(result)
 })
 
@@ -58,12 +57,12 @@ router.post('/check-password', requireAuth, async (req: AuthRequest, res: Respon
     res.status(400).json({ error: 'Password is required' })
     return
   }
-  await checkPassword(password)
+  await checkPassword(req.userId!, password)
   res.json({ success: true })
 })
 
-router.post('/disconnect', requireAuth, async (_req: AuthRequest, res: Response) => {
-  await disconnectClient()
+router.post('/disconnect', requireAuth, async (req: AuthRequest, res: Response) => {
+  await disconnectClient(req.userId!)
   res.json({ success: true })
 })
 
@@ -100,18 +99,18 @@ router.post('/send-media', requireAuth, tgUpload.single('file'), async (req: Aut
   res.json({ success: true })
 })
 
-router.get('/synced-contacts', requireAuth, async (_req: AuthRequest, res: Response) => {
-  const contacts = await prisma.telegramContact.findMany({ orderBy: { name: 'asc' } })
+router.get('/synced-contacts', requireAuth, async (req: AuthRequest, res: Response) => {
+  const contacts = await prisma.telegramContact.findMany({ where: { userId: req.userId! }, orderBy: { name: 'asc' } })
   res.json(contacts)
 })
 
-router.get('/synced-conversations', requireAuth, async (_req: AuthRequest, res: Response) => {
-  const conversations = await prisma.telegramConversation.findMany({ orderBy: { lastMessageAt: 'desc' } })
+router.get('/synced-conversations', requireAuth, async (req: AuthRequest, res: Response) => {
+  const conversations = await prisma.telegramConversation.findMany({ where: { userId: req.userId! }, orderBy: { lastMessageAt: 'desc' } })
   res.json(conversations)
 })
 
-router.post('/sync', requireAuth, async (_req: AuthRequest, res: Response) => {
-  const result = await syncContactsAndDialogs()
+router.post('/sync', requireAuth, async (req: AuthRequest, res: Response) => {
+  const result = await syncContactsAndDialogs(req.userId!)
   res.json(result)
 })
 

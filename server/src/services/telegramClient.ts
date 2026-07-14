@@ -15,6 +15,7 @@ let stringSession: StringSession | null = null
 let loginPhone = ''
 let loginPhoneCodeHash = ''
 let io: SocketIOServer | null = null
+let activeUserId: string | null = null
 
 export interface TelegramStatus {
   connected: boolean
@@ -46,32 +47,26 @@ function getClient(): TelegramClient {
   return client
 }
 
-async function loadSession(): Promise<string> {
+async function loadSession(userId: string): Promise<string> {
   try {
-    const record = await prisma.telegramSession.findFirst()
+    const record = await prisma.telegramSession.findUnique({ where: { userId } })
     return record?.session || ''
   } catch {
     return ''
   }
 }
 
-async function saveSession(phone: string) {
+async function saveSession(userId: string, phone: string) {
   const sessionStr = stringSession?.save() || ''
-  const existing = await prisma.telegramSession.findFirst()
-  if (existing) {
-    await prisma.telegramSession.update({
-      where: { id: existing.id },
-      data: { session: sessionStr, phone, isLoggedIn: true },
-    })
-  } else {
-    await prisma.telegramSession.create({
-      data: { session: sessionStr, phone, isLoggedIn: true },
-    })
-  }
+  await prisma.telegramSession.upsert({
+    where: { userId },
+    update: { session: sessionStr, phone, isLoggedIn: true },
+    create: { userId, session: sessionStr, phone, isLoggedIn: true },
+  })
 }
 
-async function clearSession() {
-  await prisma.telegramSession.deleteMany()
+async function clearSession(userId: string) {
+  await prisma.telegramSession.deleteMany({ where: { userId } })
 }
 
 export function setSocketIO(serverIo: SocketIOServer) {
@@ -118,9 +113,10 @@ function setupEventHandlers() {
   })
 }
 
-export async function initClient(): Promise<void> {
+export async function initClient(userId: string): Promise<void> {
   if (client) return
-  const sessionStr = await loadSession()
+  activeUserId = userId
+  const sessionStr = await loadSession(userId)
   stringSession = new StringSession(sessionStr)
   client = new TelegramClient(stringSession, env.TELEGRAM_API_ID, env.TELEGRAM_API_HASH, {
     connectionRetries: 5,
@@ -128,8 +124,8 @@ export async function initClient(): Promise<void> {
   await client.connect()
 }
 
-async function ensureReady() {
-  await initClient()
+async function ensureReady(userId: string) {
+  await initClient(userId)
   const c = getClient()
   try {
     await c.invoke(new Api.updates.GetState())
@@ -139,14 +135,14 @@ async function ensureReady() {
   }
 }
 
-export async function sendCode(phone: string): Promise<void> {
-  await initClient()
+export async function sendCode(userId: string, phone: string): Promise<void> {
+  await initClient(userId)
   const c = getClient()
 
   try {
     await c.invoke(new Api.updates.GetState())
     const me = await c.getMe()
-    await saveSession(me?.phone || phone)
+    await saveSession(userId, me?.phone || phone)
     setupEventHandlers()
     return
   } catch {
@@ -166,7 +162,7 @@ export async function sendCode(phone: string): Promise<void> {
   loginPhoneCodeHash = result.phoneCodeHash
 }
 
-export async function signIn(code: string): Promise<{ success: boolean; passwordNeeded: boolean }> {
+export async function signIn(userId: string, code: string): Promise<{ success: boolean; passwordNeeded: boolean }> {
   const c = getClient()
   if (!loginPhone || !loginPhoneCodeHash) {
     throw new Error('No login in progress. Call sendCode first.')
@@ -182,7 +178,7 @@ export async function signIn(code: string): Promise<{ success: boolean; password
     )
 
     const me = await c.getMe()
-    await saveSession(me?.phone || loginPhone)
+    await saveSession(userId, me?.phone || loginPhone)
     setupEventHandlers()
     loginPhone = ''
     loginPhoneCodeHash = ''
@@ -195,7 +191,7 @@ export async function signIn(code: string): Promise<{ success: boolean; password
   }
 }
 
-export async function checkPassword(password: string): Promise<void> {
+export async function checkPassword(userId: string, password: string): Promise<void> {
   const c = getClient()
 
   const passwordSrpResult = await c.invoke(new Api.account.GetPassword())
@@ -203,15 +199,15 @@ export async function checkPassword(password: string): Promise<void> {
   await c.invoke(new Api.auth.CheckPassword({ password: passwordSrpCheck }))
 
   const me = await c.getMe()
-  await saveSession(me?.phone || loginPhone)
+  await saveSession(userId, me?.phone || loginPhone)
   setupEventHandlers()
   loginPhone = ''
   loginPhoneCodeHash = ''
 }
 
-export async function getStatus(): Promise<TelegramStatus> {
+export async function getStatus(userId: string): Promise<TelegramStatus> {
   try {
-    await initClient()
+    await initClient(userId)
     const c = getClient()
     await c.invoke(new Api.updates.GetState())
     const me = await c.getMe()
@@ -222,7 +218,7 @@ export async function getStatus(): Promise<TelegramStatus> {
   }
 }
 
-export async function disconnectClient(): Promise<void> {
+export async function disconnectClient(userId: string): Promise<void> {
   if (client) {
     try { client.disconnect() } catch { /* ignore */ }
     try { client.destroy() } catch { /* ignore */ }
@@ -231,11 +227,12 @@ export async function disconnectClient(): Promise<void> {
   stringSession = null
   loginPhone = ''
   loginPhoneCodeHash = ''
-  await clearSession()
+  activeUserId = null
+  await clearSession(userId)
 }
 
 export async function getDialogs(): Promise<DialogInfo[]> {
-  await ensureReady()
+  await ensureReady(activeUserId || '')
   const c = getClient()
   const dialogs = await c.getDialogs({ limit: 100 })
   return dialogs.map((d) => {
@@ -256,7 +253,7 @@ export async function getDialogs(): Promise<DialogInfo[]> {
 }
 
 export async function getMessages(chatId: string, limit = 50): Promise<MessageInfo[]> {
-  await ensureReady()
+  await ensureReady(activeUserId || '')
   const c = getClient()
   const peerId = Number(chatId)
   const messages = await c.getMessages(peerId, { limit })
@@ -282,14 +279,14 @@ export async function getMessages(chatId: string, limit = 50): Promise<MessageIn
 }
 
 export async function sendMessage(chatId: string, text: string): Promise<void> {
-  await ensureReady()
+  await ensureReady(activeUserId || '')
   const c = getClient()
   const peerId = Number(chatId)
   await c.sendMessage(peerId, { message: text })
 }
 
 export async function sendMedia(chatId: string, filePath: string, caption?: string): Promise<void> {
-  await ensureReady()
+  await ensureReady(activeUserId || '')
   const c = getClient()
   const peerId = Number(chatId)
   try {
@@ -299,8 +296,8 @@ export async function sendMedia(chatId: string, filePath: string, caption?: stri
   }
 }
 
-export async function syncContactsAndDialogs(): Promise<{ contacts: number; conversations: number }> {
-  await ensureReady()
+export async function syncContactsAndDialogs(userId: string): Promise<{ contacts: number; conversations: number }> {
+  await ensureReady(userId)
   const c = getClient()
   const dialogs = await c.getDialogs({ limit: 100 })
   let contactsCount = 0
@@ -312,7 +309,7 @@ export async function syncContactsAndDialogs(): Promise<{ contacts: number; conv
     if (!tgId) continue
 
     await prisma.telegramConversation.upsert({
-      where: { tgId },
+      where: { tgId_userId: { tgId, userId } },
       update: {
         name: d.name || d.title || 'Unknown',
         type: d.isUser ? 'user' : d.isGroup ? 'group' : 'channel',
@@ -323,6 +320,7 @@ export async function syncContactsAndDialogs(): Promise<{ contacts: number; conv
       },
       create: {
         tgId,
+        userId,
         name: d.name || d.title || 'Unknown',
         type: d.isUser ? 'user' : d.isGroup ? 'group' : 'channel',
         unreadCount: d.unreadCount,
@@ -337,22 +335,23 @@ export async function syncContactsAndDialogs(): Promise<{ contacts: number; conv
       const phone = entity.phone || ''
       const username = entity.username || ''
       await prisma.telegramContact.upsert({
-        where: { tgId },
+        where: { tgId_userId: { tgId, userId } },
         update: { name, phone, username, lastSyncAt: new Date() },
-        create: { tgId, name, phone, username },
+        create: { tgId, userId, name, phone, username },
       })
       contactsCount++
     }
   }
 
-  log('info', 'telegram', 'Synced contacts and dialogs', { contacts: contactsCount, conversations: conversationsCount })
+  log('info', 'telegram', 'Synced contacts and dialogs', { userId, contacts: contactsCount, conversations: conversationsCount })
   return { contacts: contactsCount, conversations: conversationsCount }
 }
 
-export async function findContactId(name: string): Promise<string | null> {
+export async function findContactId(userId: string, name: string): Promise<string | null> {
   const lowered = name.toLowerCase().replace(/^@/, '')
   const contact = await prisma.telegramContact.findFirst({
     where: {
+      userId,
       OR: [
         { name: { contains: lowered } },
         { phone: { contains: lowered } },
@@ -362,13 +361,13 @@ export async function findContactId(name: string): Promise<string | null> {
   })
   if (contact) return contact.tgId
   const conv = await prisma.telegramConversation.findFirst({
-    where: { name: { contains: lowered } },
+    where: { userId, name: { contains: lowered } },
   })
   return conv?.tgId || null
 }
 
-export async function sendToContact(contactName: string, text: string, filePath?: string): Promise<void> {
-  const tgId = await findContactId(contactName)
+export async function sendToContact(userId: string, contactName: string, text: string, filePath?: string): Promise<void> {
+  const tgId = await findContactId(userId, contactName)
   if (!tgId) throw new Error(`Contact "${contactName}" not found. Sync contacts first.`)
   if (filePath) {
     await sendMedia(tgId, filePath, text || undefined)
@@ -386,7 +385,7 @@ export async function getChannels(): Promise<Array<{ name: string; canSend: bool
 }
 
 export async function getMyBots(): Promise<Array<{ name: string; username?: string }>> {
-  await ensureReady()
+  await ensureReady(activeUserId || '')
   const c = getClient()
   const dialogs = await c.getDialogs({ limit: 100 })
   const bots: Array<{ name: string; username?: string }> = []

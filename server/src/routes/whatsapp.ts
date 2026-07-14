@@ -201,8 +201,8 @@ router.post('/force-clean-auth', requireAuth, async (_req: AuthRequest, res: Res
 })
 
 // Saved Group Lists
-router.get('/group-lists', requireAuth, async (_req: AuthRequest, res: Response) => {
-  const lists = await prisma.savedGroupList.findMany({ orderBy: { createdAt: 'desc' } })
+router.get('/group-lists', requireAuth, async (req: AuthRequest, res: Response) => {
+  const lists = await prisma.savedGroupList.findMany({ where: { userId: req.userId! }, orderBy: { createdAt: 'desc' } })
   res.json({ lists: lists.map((l: Record<string, unknown>) => ({ ...l, groups: JSON.parse(l.groups as string) })) })
 })
 
@@ -213,8 +213,10 @@ router.put('/group-lists/:id', requireAuth, async (req: AuthRequest, res: Respon
     return
   }
   try {
+    const existing = await prisma.savedGroupList.findFirst({ where: { id: String(req.params.id), userId: req.userId! } })
+    if (!existing) { res.status(404).json({ error: 'List not found' }); return }
     const updated = await prisma.savedGroupList.update({
-      where: { id: String(req.params.id) },
+      where: { id: existing.id },
       data: { name: String(name), groups: JSON.stringify(groups) },
     })
     res.json({ list: { ...updated, groups: JSON.parse(updated.groups) } })
@@ -225,7 +227,9 @@ router.put('/group-lists/:id', requireAuth, async (req: AuthRequest, res: Respon
 
 router.delete('/group-lists/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    await prisma.savedGroupList.delete({ where: { id: String(req.params.id) } })
+    const existing = await prisma.savedGroupList.findFirst({ where: { id: String(req.params.id), userId: req.userId! } })
+    if (!existing) { res.status(404).json({ error: 'List not found' }); return }
+    await prisma.savedGroupList.delete({ where: { id: existing.id } })
     res.json({ ok: true })
   } catch {
     res.status(404).json({ error: 'List not found' })
@@ -233,8 +237,8 @@ router.delete('/group-lists/:id', requireAuth, async (req: AuthRequest, res: Res
 })
 
 // Gateway — Allowed Numbers & Allowed Groups
-router.get('/gateway/numbers', requireAuth, async (_req: AuthRequest, res: Response) => {
-  const numbers = await prisma.allowedNumber.findMany({ orderBy: { createdAt: 'desc' } })
+router.get('/gateway/numbers', requireAuth, async (req: AuthRequest, res: Response) => {
+  const numbers = await prisma.allowedNumber.findMany({ where: { userId: req.userId! }, orderBy: { createdAt: 'desc' } })
   res.json({ numbers })
 })
 
@@ -242,7 +246,7 @@ router.post('/gateway/numbers', requireAuth, async (req: AuthRequest, res: Respo
   const { phone } = req.body
   if (!phone) { res.status(400).json({ error: 'phone is required' }); return }
   try {
-    const entry = await prisma.allowedNumber.create({ data: { phone: String(phone) } })
+    const entry = await prisma.allowedNumber.create({ data: { userId: req.userId!, phone: String(phone) } })
     res.json({ number: entry })
   } catch {
     res.status(409).json({ error: 'Number already exists' })
@@ -251,15 +255,17 @@ router.post('/gateway/numbers', requireAuth, async (req: AuthRequest, res: Respo
 
 router.delete('/gateway/numbers/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    await prisma.allowedNumber.delete({ where: { id: String(req.params.id) } })
+    const existing = await prisma.allowedNumber.findFirst({ where: { id: String(req.params.id), userId: req.userId! } })
+    if (!existing) { res.status(404).json({ error: 'Not found' }); return }
+    await prisma.allowedNumber.delete({ where: { id: existing.id } })
     res.json({ ok: true })
   } catch {
     res.status(404).json({ error: 'Not found' })
   }
 })
 
-router.get('/gateway/groups', requireAuth, async (_req: AuthRequest, res: Response) => {
-  const groups = await prisma.allowedGroup.findMany({ orderBy: { createdAt: 'desc' } })
+router.get('/gateway/groups', requireAuth, async (req: AuthRequest, res: Response) => {
+  const groups = await prisma.allowedGroup.findMany({ where: { userId: req.userId! }, orderBy: { createdAt: 'desc' } })
   res.json({ groups })
 })
 
@@ -267,7 +273,7 @@ router.post('/gateway/groups', requireAuth, async (req: AuthRequest, res: Respon
   const { name } = req.body
   if (!name) { res.status(400).json({ error: 'name is required' }); return }
   try {
-    const entry = await prisma.allowedGroup.create({ data: { name: String(name) } })
+    const entry = await prisma.allowedGroup.create({ data: { userId: req.userId!, name: String(name) } })
     res.json({ group: entry })
   } catch {
     res.status(409).json({ error: 'Group already exists' })
@@ -276,7 +282,9 @@ router.post('/gateway/groups', requireAuth, async (req: AuthRequest, res: Respon
 
 router.delete('/gateway/groups/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    await prisma.allowedGroup.delete({ where: { id: String(req.params.id) } })
+    const existing = await prisma.allowedGroup.findFirst({ where: { id: String(req.params.id), userId: req.userId! } })
+    if (!existing) { res.status(404).json({ error: 'Not found' }); return }
+    await prisma.allowedGroup.delete({ where: { id: existing.id } })
     res.json({ ok: true })
   } catch {
     res.status(404).json({ error: 'Not found' })

@@ -2,18 +2,18 @@ import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
-export async function getConfig() {
-  let config = await prisma.omnirouteConfig.findFirst()
+export async function getConfig(userId: string) {
+  let config = await prisma.omnirouteConfig.findFirst({ where: { userId } })
   if (!config) {
-    config = await prisma.omnirouteConfig.create({ data: {} })
+    config = await prisma.omnirouteConfig.create({ data: { userId } })
   }
   return config
 }
 
-export async function updateConfig(data: { baseUrl?: string; apiKey?: string; model?: string; systemPrompt?: string }) {
-  const current = await getConfig()
+export async function updateConfig(userId: string, data: { baseUrl?: string; apiKey?: string; model?: string; systemPrompt?: string }) {
+  const current = await getConfig(userId)
   return prisma.omnirouteConfig.update({
-    where: { id: current.id },
+    where: { userId },
     data: {
       ...(data.baseUrl !== undefined && { baseUrl: data.baseUrl }),
       ...(data.apiKey !== undefined && { apiKey: data.apiKey }),
@@ -23,9 +23,9 @@ export async function updateConfig(data: { baseUrl?: string; apiKey?: string; mo
   })
 }
 
-export async function chatCompletion(messages: { role: string; content: string }[]) {
-  const config = await getConfig()
-  if (!config.apiKey) throw new Error('Omniroute API key not configured')
+export async function chatCompletion(messages: { role: string; content: string }[], userId?: string) {
+  const config = userId ? await getConfig(userId) : await prisma.omnirouteConfig.findFirst()
+  if (!config || !config.apiKey) throw new Error('Omniroute API key not configured')
 
   const body: any = {
     model: config.model || 'auto/coding:free',
@@ -53,7 +53,6 @@ export async function chatCompletion(messages: { role: string; content: string }
     throw new Error(`Omniroute API error ${response.status}: ${resText.slice(0, 200)}`)
   }
 
-  // Handle SSE streaming response (NDJSON lines)
   if (resText.startsWith('data: ') || resText.includes('\ndata: ')) {
     const lines = resText.split('\n').filter(l => l.startsWith('data: ') && l !== 'data: [DONE]')
     let fullContent = ''

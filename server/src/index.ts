@@ -51,12 +51,22 @@ async function main(): Promise<void> {
     })
   })
 
-  cron.schedule('0 0 * * *', () => {
-    syncContactsAndDialogs().then((r) => {
-      log('info', 'system', 'Telegram auto-sync completed', r)
-    }).catch((err) => {
-      log('error', 'system', 'Telegram auto-sync failed', { error: (err as Error).message })
-    })
+  cron.schedule('0 0 * * *', async () => {
+    const { PrismaClient } = await import('@prisma/client')
+    const prisma = new PrismaClient()
+    try {
+      const sessions = await prisma.telegramSession.findMany()
+      for (const session of sessions) {
+        try {
+          const r = await syncContactsAndDialogs(session.userId)
+          log('info', 'system', 'Telegram auto-sync completed', { userId: session.userId, ...r })
+        } catch (err) {
+          log('error', 'system', 'Telegram auto-sync failed', { userId: session.userId, error: (err as Error).message })
+        }
+      }
+    } finally {
+      await prisma.$disconnect()
+    }
   })
 
   httpServer.listen(env.PORT, () => {
