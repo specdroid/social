@@ -25,9 +25,10 @@ async function main() {
         name: 'Ahmad',
         passwordHash: hash,
         tier: 'premium',
+        role: 'master',
       },
     })
-    console.log(`Created: ${created.email} / Ahmad@2025 (id: ${created.id}, tier: ${created.tier})`)
+    console.log(`Created: ${created.email} / Ahmad@2025 (id: ${created.id}, tier: ${created.tier}, role: ${created.role})`)
   } else {
     // Update the first user
     const hash = bcrypt.hashSync('Ahmad@2025', 10)
@@ -37,9 +38,10 @@ async function main() {
         email: 'ahmad.zeineddine@hotmail.com',
         passwordHash: hash,
         tier: 'premium',
+        role: 'master',
       },
     })
-    console.log(`Updated: ${updated.email} / Ahmad@2025 (id: ${updated.id}, tier: ${updated.tier})`)
+    console.log(`Updated: ${updated.email} / Ahmad@2025 (id: ${updated.id}, tier: ${updated.tier}, role: ${updated.role})`)
   }
 
   // Verify the update
@@ -52,6 +54,7 @@ async function main() {
     console.log(`Email: ${user.email}`)
     console.log(`Password valid: ${valid}`)
     console.log(`Tier: ${user.tier}`)
+    console.log(`Role: ${user.role}`)
     if (!valid) {
       console.log('ERROR: Password hash does not match!')
     }

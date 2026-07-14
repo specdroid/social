@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Layout } from './components/Layout'
 import { Dashboard } from './pages/Dashboard'
 import { Automation } from './pages/Automation'
@@ -9,6 +9,7 @@ import { Billing } from './pages/Billing'
 import { Help } from './pages/Help'
 import { Omniroute } from './pages/Omniroute'
 import { Telegram } from './pages/Telegram'
+import { Admin } from './pages/Admin'
 
 function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
   const [email, setEmail] = useState('')
@@ -115,6 +116,21 @@ function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
 
 export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token'))
+  const [userRole, setUserRole] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!token) {
+      setUserRole(null)
+      return
+    }
+    const API_URL = import.meta.env.VITE_API_URL || ''
+    fetch(`${API_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => setUserRole(data.user?.role ?? null))
+      .catch(() => setUserRole(null))
+  }, [token])
 
   if (!token) {
     return <LoginPage onLogin={(t) => setToken(t)} />
@@ -123,14 +139,15 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/dashboard" element={<Layout onLogout={() => setToken(null)}><Dashboard /></Layout>} />
-        <Route path="/automation" element={<Layout onLogout={() => setToken(null)}><Automation /></Layout>} />
-        <Route path="/whatsapp" element={<Layout onLogout={() => setToken(null)}><WhatsApp /></Layout>} />
-        <Route path="/facebook" element={<Layout onLogout={() => setToken(null)}><Facebook /></Layout>} />
-        <Route path="/billing" element={<Layout onLogout={() => setToken(null)}><Billing /></Layout>} />
-        <Route path="/help" element={<Layout onLogout={() => setToken(null)}><Help /></Layout>} />
-        <Route path="/omniroute" element={<Layout onLogout={() => setToken(null)}><Omniroute /></Layout>} />
-        <Route path="/telegram" element={<Layout onLogout={() => setToken(null)}><Telegram /></Layout>} />
+        <Route path="/dashboard" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><Dashboard /></Layout>} />
+        <Route path="/automation" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><Automation /></Layout>} />
+        <Route path="/whatsapp" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><WhatsApp /></Layout>} />
+        <Route path="/facebook" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><Facebook /></Layout>} />
+        <Route path="/billing" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><Billing /></Layout>} />
+        <Route path="/help" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><Help /></Layout>} />
+        <Route path="/omniroute" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><Omniroute /></Layout>} />
+        <Route path="/telegram" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><Telegram /></Layout>} />
+        <Route path="/admin" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><Admin /></Layout>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>

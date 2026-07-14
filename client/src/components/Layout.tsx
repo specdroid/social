@@ -11,6 +11,7 @@ import {
   LogOut,
   Menu,
   X,
+  Shield,
 } from 'lucide-react'
 import { TelegramIcon } from './icons/TelegramIcon'
 
@@ -25,7 +26,7 @@ const navItems = [
   { path: '/help', label: 'Help', icon: HelpCircle },
 ]
 
-export function Layout({ children, onLogout }: { children: ReactNode; onLogout?: () => void }) {
+export function Layout({ children, onLogout, userRole }: { children: ReactNode; onLogout?: () => void; userRole?: string | null }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -68,6 +69,19 @@ export function Layout({ children, onLogout }: { children: ReactNode; onLogout?:
             </button>
           )
         })}
+        {userRole === 'master' && (
+          <button
+            onClick={() => handleNav('/admin')}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+              location.pathname === '/admin'
+                ? 'bg-yellow-500/20 text-yellow-400'
+                : 'text-yellow-400/70 hover:text-yellow-400 hover:bg-yellow-400/10'
+            }`}
+          >
+            <Shield className="w-4 h-4" />
+            Admin Panel
+          </button>
+        )}
       </nav>
       <div className="p-3 border-t border-zinc-800">
         <button

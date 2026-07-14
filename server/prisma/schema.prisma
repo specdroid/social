@@ -12,11 +12,18 @@ enum Tier {
   premium
 }
 
+enum Role {
+  master
+  admin
+  user
+}
+
 model User {
   id                   String             @id @default(cuid())
   email                String             @unique
   name                 String?
   passwordHash         String
+  role                 Role               @default(user)
   tier                 Tier               @default(free)
   stripeCustomerId     String?
   stripeSubscriptionId String?

@@ -29,7 +29,7 @@ router.post('/register', async (req: Request, res: Response) => {
   })
 
   const token = jwt.sign(
-    { userId: user.id, tier: user.tier, expiresAt: user.expiresAt?.toISOString() },
+    { userId: user.id, tier: user.tier, role: user.role, expiresAt: user.expiresAt?.toISOString() },
     env.JWT_SECRET,
     { expiresIn: '7d' }
   )
@@ -42,7 +42,7 @@ router.post('/register', async (req: Request, res: Response) => {
     },
   })
 
-  res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name, tier: user.tier } })
+  res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name, tier: user.tier, role: user.role } })
 })
 
 router.post('/login', async (req: Request, res: Response) => {
@@ -63,7 +63,7 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 
   const token = jwt.sign(
-    { userId: user.id, tier: user.tier, expiresAt: user.expiresAt?.toISOString() },
+    { userId: user.id, tier: user.tier, role: user.role, expiresAt: user.expiresAt?.toISOString() },
     env.JWT_SECRET,
     { expiresIn: '7d' }
   )
@@ -76,13 +76,13 @@ router.post('/login', async (req: Request, res: Response) => {
     },
   })
 
-  res.json({ token, user: { id: user.id, email: user.email, name: user.name, tier: user.tier } })
+  res.json({ token, user: { id: user.id, email: user.email, name: user.name, tier: user.tier, role: user.role } })
 })
 
 router.get('/me', requireAuth, async (req: AuthRequest, res: Response) => {
   const user = await prisma.user.findUnique({
     where: { id: req.userId },
-    select: { id: true, email: true, name: true, tier: true, expiresAt: true },
+    select: { id: true, email: true, name: true, tier: true, role: true, expiresAt: true },
   })
 
   res.json({ user })

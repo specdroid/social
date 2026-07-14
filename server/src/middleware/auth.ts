@@ -10,6 +10,7 @@ const prisma = new PrismaClient()
 interface JwtPayload {
   userId: string
   tier: string
+  role: string
   expiresAt: string | null
 }
 
@@ -39,6 +40,7 @@ export async function requireAuth(
 
     req.userId = decoded.userId
     req.userTier = decoded.tier
+    req.userRole = decoded.role
     req.userExpiresAt = decoded.expiresAt
 
     next()

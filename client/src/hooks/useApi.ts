@@ -103,6 +103,26 @@ export function useApi() {
     }
   }, [])
 
+  const patch = useCallback(async <T>(endpoint: string, body?: unknown): Promise<T> => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await request<T>(endpoint, {
+        method: 'PATCH',
+        body: body ? JSON.stringify(body) : undefined,
+      })
+      return data
+    } catch (err) {
+      const message = (err as Error).name === 'AbortError'
+        ? 'Request timed out'
+        : (err as Error).message
+      setError(message)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   const del = useCallback(async <T>(endpoint: string): Promise<T> => {
     setLoading(true)
     setError(null)
@@ -120,5 +140,5 @@ export function useApi() {
     }
   }, [])
 
-  return { get, post, put, del, loading, error }
+  return { get, post, put, patch, del, loading, error }
 }
