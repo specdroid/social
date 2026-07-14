@@ -3,7 +3,7 @@ import http from 'http'
 import { createApp } from './app'
 import { env } from './config/env'
 import { setupWebSocket } from './websocket/whatsappSocket'
-import { initWhatsAppBot, cleanupAuthFolder } from './services/whatsappBot'
+import { manager } from './services/whatsapp'
 import { setSocketIO as setTelegramIO, syncContactsAndDialogs } from './services/telegramClient'
 import { startContentScheduler } from './services/contentScheduler'
 import { processRetryQueue } from './services/retryQueue'
@@ -29,14 +29,11 @@ async function main(): Promise<void> {
   const httpServer = http.createServer(app)
 
   const io = setupWebSocket(httpServer)
+  manager.setSocketIO(io)
   setTelegramIO(io)
 
   if (env.WA_ENABLED) {
-    log('info', 'system', 'WhatsApp bot enabled. Waiting for user to click "Connect WhatsApp".')
-    const cleaned = cleanupAuthFolder()
-    if (cleaned.deleted > 0) {
-      log('info', 'system', `Auth folder cleaned on startup: ${cleaned.deleted} stale files removed`)
-    }
+    log('info', 'system', 'WhatsApp bot enabled. Users can connect via dashboard.')
   } else {
     log('info', 'system', 'WhatsApp bot disabled via WA_ENABLED=false')
   }
@@ -45,9 +42,7 @@ async function main(): Promise<void> {
 
   cron.schedule('*/5 * * * *', () => {
     processRetryQueue().catch((err) => {
-      log('error', 'system', 'Retry queue cron failed', {
-        error: (err as Error).message,
-      })
+      log('error', 'system', 'Retry queue cron failed', { error: (err as Error).message })
     })
   })
 

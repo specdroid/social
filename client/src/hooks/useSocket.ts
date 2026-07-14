@@ -13,8 +13,10 @@ export function useSocket(): UseSocketResult {
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
+    const token = localStorage.getItem('token')
     const s = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
+      auth: { token },
     })
 
     setSocket(s)

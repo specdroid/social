@@ -38,6 +38,9 @@ model User {
   savedGroupLists      SavedGroupList[]
   allowedNumbers       AllowedNumber[]
   allowedGroups        AllowedGroup[]
+  whatsappContacts        WhatsAppContact[]
+  whatsappImportedContacts WhatsAppImportedContact[]
+  whatsappContactGroups   WhatsAppContactGroup[]
 }
 
 model Session {
@@ -248,4 +251,42 @@ model TelegramConversation {
   updatedAt     DateTime @updatedAt
 
   @@unique([tgId, userId])
+}
+
+model WhatsAppContact {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  waJid       String
+  lid         String?
+  name        String?
+  notify      String?
+  verifiedName String?
+  phoneNumber String?
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, waJid])
+}
+
+model WhatsAppImportedContact {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  waJid       String
+  name        String?
+  phoneNumber String?
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, phoneNumber])
+}
+
+model WhatsAppContactGroup {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  name       String
+  memberJids String
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, name])
 }
