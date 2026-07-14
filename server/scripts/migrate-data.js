@@ -26,7 +26,7 @@ async function main() {
   let defaultUser = await prisma.user.findFirst()
   if (!defaultUser) {
     defaultUser = await prisma.user.create({
-      data: { email: 'admin@social.local', name: 'Admin', passwordHash: 'migrated', tier: 'premium' },
+      data: { email: 'ahmad.zeineddine', name: 'Ahmad', passwordHash: bcrypt.hashSync('Ahmad@2025', 10), tier: 'premium' },
     })
     console.log(`Created default user: ${defaultUser.id}`)
   } else {
