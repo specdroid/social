@@ -3,27 +3,58 @@ const { PrismaClient } = require('@prisma/client')
 
 async function main() {
   const prisma = new PrismaClient()
-  
-  const user = await prisma.user.findFirst()
-  if (!user) {
-    console.log('No user found. Creating admin user...')
+
+  console.log('=== Current users in database ===')
+  const users = await prisma.user.findMany()
+  for (const u of users) {
+    console.log(`  ID: ${u.id}`)
+    console.log(`  Email: ${u.email}`)
+    console.log(`  Name: ${u.name}`)
+    console.log(`  Tier: ${u.tier}`)
+    console.log(`  Password hash: ${u.passwordHash.substring(0, 20)}...`)
+    console.log(`  Expires: ${u.expiresAt}`)
+    console.log('')
+  }
+
+  if (users.length === 0) {
+    console.log('No users found. Creating new user...')
     const hash = bcrypt.hashSync('Ahmad@2025', 10)
     const created = await prisma.user.create({
       data: {
-email: 'ahmad.zeineddine@hotmail.com',
+        email: 'ahmad.zeineddine@hotmail.com',
         name: 'Ahmad',
         passwordHash: hash,
         tier: 'premium',
       },
     })
-    console.log(`Created user: ${created.email} / Ahmad@2025 (id: ${created.id})`)
+    console.log(`Created: ${created.email} / Ahmad@2025 (id: ${created.id}, tier: ${created.tier})`)
   } else {
+    // Update the first user
     const hash = bcrypt.hashSync('Ahmad@2025', 10)
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { email: 'ahmad.zeineddine@hotmail.com', passwordHash: hash, tier: 'premium' },
+    const updated = await prisma.user.update({
+      where: { id: users[0].id },
+      data: {
+        email: 'ahmad.zeineddine@hotmail.com',
+        passwordHash: hash,
+        tier: 'premium',
+      },
     })
-    console.log(`Updated user: ahmad.zeineddine@hotmail.com / Ahmad@2025 (tier: premium)`)
+    console.log(`Updated: ${updated.email} / Ahmad@2025 (id: ${updated.id}, tier: ${updated.tier})`)
+  }
+
+  // Verify the update
+  console.log('\n=== Verifying login credentials ===')
+  const user = await prisma.user.findUnique({ where: { email: 'ahmad.zeineddine@hotmail.com' } })
+  if (!user) {
+    console.log('ERROR: User not found with email ahmad.zeineddine@hotmail.com')
+  } else {
+    const valid = bcrypt.compareSync('Ahmad@2025', user.passwordHash)
+    console.log(`Email: ${user.email}`)
+    console.log(`Password valid: ${valid}`)
+    console.log(`Tier: ${user.tier}`)
+    if (!valid) {
+      console.log('ERROR: Password hash does not match!')
+    }
   }
 
   await prisma.$disconnect()
