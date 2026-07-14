@@ -11,11 +11,13 @@ export function matchesTrigger(
   const t = trigger.toLowerCase().trim()
   if (!t) return false
 
+  const escaped = escapeRegex(t)
+
   if (mode === 'beginning') {
-    return new RegExp(`^${escapeRegex(t)}(\\s|$)`).test(lower)
+    return new RegExp(`^${escaped}(?:\\s|$)`).test(lower)
   }
 
-  return new RegExp(`(?:^|\\s)${escapeRegex(t)}(?:\\s|$)`).test(lower)
+  return new RegExp(`\\b${escaped}\\b`).test(lower)
 }
 
 export function matchAnyTrigger(
