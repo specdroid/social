@@ -307,6 +307,13 @@ export async function sendMedia(chatId: string, filePath: string, caption?: stri
   await ensureReady(activeUserId || '')
   const c = getClient()
   const peerId = Number(chatId)
+  const uploadsDir = path.resolve(process.cwd(), 'telegram', 'uploads')
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
+  const fileName = `${Date.now()}_${path.basename(filePath)}`
+  const destPath = path.resolve(uploadsDir, fileName)
+  try {
+    fs.copyFileSync(filePath, destPath)
+  } catch { /* ignore */ }
   try {
     await c.sendFile(peerId, { file: filePath, caption })
   } finally {
