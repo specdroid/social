@@ -18,7 +18,7 @@ import { delay, randomDelay } from '../../utils/delay'
 import { env } from '../../config/env'
 import { publishPost } from '../metaGraph'
 import { chatCompletion } from '../omniroute'
-import { sendToContact, syncContactsAndDialogs, getChannels, getMyBots, getDialogs, getMessages, findChannelId, sendToChannel } from '../telegramClient'
+import { sendToContact, syncContactsAndDialogs, getChannels, getMyBots, getDialogs, getMessages, findChannelId, sendToChannel, signIn } from '../telegramClient'
 import type { ContactEntry, CreateRuleWizard, ChannelSelection, ConnectionState } from './types'
 import { matchAnyTrigger } from '../triggerMatch'
 
@@ -816,7 +816,7 @@ export class UserWhatsAppManager {
     // ── -help ──
     if (/^-help$/i.test(textContent.trim())) {
       await sock.sendMessage(sender, {
-        text: `📋 *Commands*\n\n🔹 *fb: content* — Post to Facebook Page\n🔹 *ws ai: prompt* — AI chat\n🔹 *-help* — Show help\n🔹 *ws create rule <name>* — Create automation rule\n🔹 *ws create <name> save <gr1, gr2>* — Save group list\n🔹 *ws get groups* — List WhatsApp groups\n🔹 *ws get rules* — List automation rules\n🔹 *ws gr1, gr2: content* — Forward to groups\n🔹 *ws list <name>: content* — Send to saved list\n🔹 *ws test <rule>: <trigger>* — Test rule\n🔹 *tel get channels* — List Telegram channels\n🔹 *tel <channel>: <content>* — Send to Telegram channel\n🔹 *tel get <channel> [limit] [time]* — Fetch messages\n🔹 *tel send <contact>: <message>* — Send Telegram msg`,
+        text: `📋 *Commands*\n\n🔹 *fb: content* — Post to Facebook Page\n🔹 *ws ai: prompt* — AI chat\n🔹 *ws verify telegram: code* — Verify Telegram login\n🔹 *-help* — Show help\n🔹 *ws create rule <name>* — Create automation rule\n🔹 *ws create <name> save <gr1, gr2>* — Save group list\n🔹 *ws get groups* — List WhatsApp groups\n🔹 *ws get rules* — List automation rules\n🔹 *ws gr1, gr2: content* — Forward to groups\n🔹 *ws list <name>: content* — Send to saved list\n🔹 *ws test <rule>: <trigger>* — Test rule\n🔹 *tel get channels* — List Telegram channels\n🔹 *tel <channel>: <content>* — Send to Telegram channel\n🔹 *tel get <channel> [limit] [time]* — Fetch messages\n🔹 *tel send <contact>: <message>* — Send Telegram msg`,
       })
       return true
     }
@@ -933,6 +933,22 @@ export class UserWhatsAppManager {
       return true
     }
 
+    // ── ws verify telegram : <code> ──
+    const telVerifyMatch = textContent.match(/^ws\s+verify\s+telegram\s*:\s*(.*)/is)
+    if (telVerifyMatch) {
+      const code = telVerifyMatch[1]?.trim()
+      if (!code) { await sock.sendMessage(sender, { text: '❌ Usage: ws verify telegram : <code>' }); return true }
+      try {
+        const result = await signIn(this.userId, code)
+        if (result.passwordNeeded) {
+          await sock.sendMessage(sender, { text: '🔑 2FA password required. Send: `ws verify telegram : <password>`' })
+        } else {
+          await sock.sendMessage(sender, { text: '✅ Telegram verified and connected!' })
+        }
+      } catch (err) { await sock.sendMessage(sender, { text: `❌ Telegram verify failed: ${(err as Error).message}` }) }
+      return true
+    }
+
     // ── ws group1, group2: content ──
     const wsMatch = textContent.match(/^ws\s+(.+?):\s*(.*)/is)
     if (wsMatch) {
@@ -966,7 +982,7 @@ export class UserWhatsAppManager {
 
     // ── ws help ──
     if (/^ws\s+(help|-h)$/i.test(textContent.trim())) {
-      await sock.sendMessage(sender, { text: '🔹 ws get groups\n🔹 ws get rules\n🔹 ws create rule <name>\n🔹 ws delete rule <name>\n🔹 ws create <name> save <gr1, gr2>\n🔹 ws delete list <name>\n🔹 ws list <name>: <content>\n🔹 ws <gr1, gr2>: <content>\n🔹 ws test <rule>: <trigger>\n🔹 ws ai: <prompt>\n🔹 tel get channels\n🔹 tel <channel>: <content>' })
+      await sock.sendMessage(sender, { text: '🔹 ws get groups\n🔹 ws get rules\n🔹 ws create rule <name>\n🔹 ws delete rule <name>\n🔹 ws create <name> save <gr1, gr2>\n🔹 ws delete list <name>\n🔹 ws list <name>: <content>\n🔹 ws <gr1, gr2>: <content>\n🔹 ws test <rule>: <trigger>\n🔹 ws ai: <prompt>\n🔹 ws verify telegram: <code>\n🔹 tel get channels\n🔹 tel <channel>: <content>' })
       return true
     }
 
