@@ -8,8 +8,8 @@ import { AppError } from '../middleware/errorHandler'
 
 const router = Router()
 
-const BASE_DIR = path.resolve(process.cwd(), 'telegram')
-const ALLOWED_DIRS = ['uploads', 'downloads']
+const BASE_DIR = path.resolve(process.cwd())
+const ALLOWED_DIRS = ['uploads', 'telegram/uploads', 'telegram/downloads']
 
 router.use(requireAuth)
 router.use(requireMaster)
