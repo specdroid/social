@@ -17,6 +17,7 @@ import {
   sendMedia,
   syncContactsAndDialogs,
   downloadMessageMedia,
+  deleteMessage,
 } from '../services/telegramClient'
 import { PrismaClient } from '@prisma/client'
 
@@ -88,6 +89,13 @@ router.post('/send', requireAuth, async (req: AuthRequest, res: Response) => {
     return
   }
   await sendMessage(String(chatId), String(text))
+  res.json({ success: true })
+})
+
+router.delete('/message/:chatId/:messageId', requireAuth, async (req: AuthRequest, res: Response) => {
+  const chatId = req.params.chatId as string
+  const messageId = parseInt(req.params.messageId as string, 10)
+  await deleteMessage(chatId, messageId)
   res.json({ success: true })
 })
 

@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   Shield,
+  FolderOpen,
 } from 'lucide-react'
 import { TelegramIcon } from './icons/TelegramIcon'
 
@@ -80,6 +81,19 @@ export function Layout({ children, onLogout, userRole }: { children: ReactNode; 
           >
             <Shield className="w-4 h-4" />
             Admin Panel
+          </button>
+        )}
+        {userRole === 'master' && (
+          <button
+            onClick={() => handleNav('/files')}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+              location.pathname === '/files'
+                ? 'bg-blue-500/20 text-blue-400'
+                : 'text-blue-400/70 hover:text-blue-400 hover:bg-blue-400/10'
+            }`}
+          >
+            <FolderOpen className="w-4 h-4" />
+            File Explorer
           </button>
         )}
       </nav>

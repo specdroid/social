@@ -10,6 +10,7 @@ import { Help } from './pages/Help'
 import { Omniroute } from './pages/Omniroute'
 import { Telegram } from './pages/Telegram'
 import { Admin } from './pages/Admin'
+import { Files } from './pages/Files'
 
 function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
   const [email, setEmail] = useState('')
@@ -148,6 +149,7 @@ export default function App() {
         <Route path="/omniroute" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><Omniroute /></Layout>} />
         <Route path="/telegram" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><Telegram /></Layout>} />
         <Route path="/admin" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><Admin /></Layout>} />
+        <Route path="/files" element={<Layout onLogout={() => setToken(null)} userRole={userRole}><Files /></Layout>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>

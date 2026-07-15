@@ -296,6 +296,13 @@ export async function sendMessage(chatId: string, text: string): Promise<void> {
   await c.sendMessage(peerId, { message: text })
 }
 
+export async function deleteMessage(chatId: string, messageId: number): Promise<void> {
+  await ensureReady(activeUserId || '')
+  const c = getClient()
+  const peerId = Number(chatId)
+  await c.deleteMessages(peerId, [messageId], {}) as any
+}
+
 export async function sendMedia(chatId: string, filePath: string, caption?: string): Promise<void> {
   await ensureReady(activeUserId || '')
   const c = getClient()

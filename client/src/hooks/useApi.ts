@@ -123,11 +123,16 @@ export function useApi() {
     }
   }, [])
 
-  const del = useCallback(async <T>(endpoint: string): Promise<T> => {
+  const del = useCallback(async <T>(endpoint: string, body?: unknown): Promise<T> => {
     setLoading(true)
     setError(null)
     try {
-      const data = await request<T>(endpoint, { method: 'DELETE' })
+      const options: RequestInit = { method: 'DELETE' }
+      if (body) {
+        options.body = JSON.stringify(body)
+        options.headers = { 'Content-Type': 'application/json' }
+      }
+      const data = await request<T>(endpoint, options)
       return data
     } catch (err) {
       const message = (err as Error).name === 'AbortError'

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useApi } from '../hooks/useApi'
 import { TelegramIcon } from './icons/TelegramIcon'
 import { useSocket } from '../hooks/useSocket'
-import { Search, Send, Paperclip, Loader2, RefreshCw, Clock } from 'lucide-react'
+import { Search, Send, Paperclip, Loader2, RefreshCw, Clock, Trash2, Download } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 
@@ -47,6 +47,18 @@ export function TelegramChat({ onDisconnect, phone }: { onDisconnect: () => void
   function getMediaUrl(chatId: string, messageId: number): string {
     const token = localStorage.getItem('token')
     return `${API_URL}/api/telegram/media/${chatId}/${messageId}?token=${token}`
+  }
+
+  async function handleDeleteMessage(messageId: number) {
+    if (!selectedId) return
+    try {
+      const token = localStorage.getItem('token')
+      await fetch(`${API_URL}/api/telegram/message/${selectedId}/${messageId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setMessages((prev) => prev.filter((m) => m.id !== messageId))
+    } catch { /* ignore */ }
   }
   const filteredDialogs = dialogs.filter(
     (d) => d.name.toLowerCase().includes(search.toLowerCase()) || d.phone?.includes(search)
@@ -273,9 +285,9 @@ export function TelegramChat({ onDisconnect, phone }: { onDisconnect: () => void
                   <p className="text-zinc-600 text-sm text-center pt-8">No messages yet</p>
                 ) : (
                   messages.map((m) => (
-                    <div key={m.id} className={`flex ${m.out ? 'justify-end' : 'justify-start'}`}>
+                    <div key={m.id} className={`group flex ${m.out ? 'justify-end' : 'justify-start'}`}>
                       <div
-                        className={`max-w-[75%] px-3 py-2 rounded-lg text-sm ${
+                        className={`max-w-[75%] px-3 py-2 rounded-lg text-sm relative ${
                           m.out ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-200'
                         }`}
                       >
@@ -289,14 +301,35 @@ export function TelegramChat({ onDisconnect, phone }: { onDisconnect: () => void
                           />
                         )}
                         {m.media && m.media.type !== 'MessageMediaPhoto' && (
-                          <p className="text-xs text-zinc-400 mb-1 italic">
-                            [Media]
-                          </p>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs italic">[Media]</span>
+                            {selectedId && (
+                              <a
+                                href={getMediaUrl(selectedId, m.id)}
+                                download
+                                className="text-blue-400 hover:text-blue-300"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
                         )}
                         {m.text && <p className="whitespace-pre-wrap break-words">{m.text}</p>}
-                        <p className={`text-[10px] mt-1 ${m.out ? 'text-blue-200' : 'text-zinc-500'}`}>
-                          {new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-[10px] mt-1 ${m.out ? 'text-blue-200' : 'text-zinc-500'}`}>
+                            {new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                          <button
+                            onClick={() => handleDeleteMessage(m.id)}
+                            className={`opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-red-500/20 ${
+                              m.out ? 'text-blue-200 hover:text-red-300' : 'text-zinc-500 hover:text-red-400'
+                            }`}
+                            title="Delete message"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))
