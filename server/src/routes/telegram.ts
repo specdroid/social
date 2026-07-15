@@ -1,6 +1,8 @@
 import { Router, Response } from 'express'
 import multer from 'multer'
 import path from 'path'
+import jwt from 'jsonwebtoken'
+import { env } from '../config/env'
 import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import {
@@ -14,6 +16,7 @@ import {
   sendMessage,
   sendMedia,
   syncContactsAndDialogs,
+  downloadMessageMedia,
 } from '../services/telegramClient'
 import { PrismaClient } from '@prisma/client'
 
@@ -112,6 +115,27 @@ router.get('/synced-conversations', requireAuth, async (req: AuthRequest, res: R
 router.post('/sync', requireAuth, async (req: AuthRequest, res: Response) => {
   const result = await syncContactsAndDialogs(req.userId!)
   res.json(result)
+})
+
+router.get('/media/:chatId/:messageId', async (req: AuthRequest, res: Response) => {
+  const chatId = req.params.chatId as string
+  const messageId = parseInt(req.params.messageId as string, 10)
+  const token = typeof req.query.token === 'string' ? req.query.token : null
+  if (!token) { res.status(401).json({ error: 'Token required' }); return }
+  try {
+    jwt.verify(token, env.JWT_SECRET)
+  } catch {
+    res.status(401).json({ error: 'Invalid token' }); return
+  }
+  try {
+    const filePath = await downloadMessageMedia(chatId, messageId)
+    if (!filePath) { res.status(404).json({ error: 'No media found' }); return }
+    res.sendFile(filePath, (err) => {
+      try { require('fs').unlinkSync(filePath) } catch { /* ignore */ }
+    })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
 })
 
 export default router

@@ -6,6 +6,8 @@ import { env } from '../config/env'
 import { PrismaClient } from '@prisma/client'
 import { Server as SocketIOServer } from 'socket.io'
 import fs from 'fs'
+import path from 'path'
+import os from 'os'
 import { log } from '../utils/logger'
 
 const prisma = new PrismaClient()
@@ -303,6 +305,21 @@ export async function sendMedia(chatId: string, filePath: string, caption?: stri
   } finally {
     try { fs.unlinkSync(filePath) } catch { /* ignore */ }
   }
+}
+
+export async function downloadMessageMedia(chatId: string, messageId: number): Promise<string | null> {
+  await ensureReady(activeUserId || '')
+  const c = getClient()
+  const peerId = Number(chatId)
+  const messages = await c.getMessages(peerId, { ids: [messageId] })
+  const msg = messages[0]
+  if (!msg?.media) return null
+  const buffer = await c.downloadMedia(msg.media)
+  if (!buffer) return null
+  const ext = msg.media.className === 'MessageMediaPhoto' ? '.jpg' : '.bin'
+  const filePath = path.resolve(os.tmpdir(), `tg_media_${chatId}_${messageId}${ext}`)
+  fs.writeFileSync(filePath, buffer)
+  return filePath
 }
 
 export async function syncContactsAndDialogs(userId: string): Promise<{ contacts: number; conversations: number }> {

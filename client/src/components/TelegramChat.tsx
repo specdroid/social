@@ -43,6 +43,11 @@ export function TelegramChat({ onDisconnect, phone }: { onDisconnect: () => void
   const fileRef = useRef<HTMLInputElement>(null)
 
   const selectedDialog = dialogs.find((d) => d.id === selectedId) || null
+
+  function getMediaUrl(chatId: string, messageId: number): string {
+    const token = localStorage.getItem('token')
+    return `${API_URL}/api/telegram/media/${chatId}/${messageId}?token=${token}`
+  }
   const filteredDialogs = dialogs.filter(
     (d) => d.name.toLowerCase().includes(search.toLowerCase()) || d.phone?.includes(search)
   )
@@ -274,9 +279,18 @@ export function TelegramChat({ onDisconnect, phone }: { onDisconnect: () => void
                           m.out ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-200'
                         }`}
                       >
-                        {m.media && !m.text.startsWith('[') && (
+                        {m.media && m.media.type === 'MessageMediaPhoto' && selectedId && (
+                          <img
+                            src={getMediaUrl(selectedId, m.id)}
+                            alt="Photo"
+                            className="rounded-lg max-w-full mb-1 cursor-pointer hover:opacity-90"
+                            style={{ maxHeight: '300px' }}
+                            onClick={() => window.open(getMediaUrl(selectedId, m.id), '_blank')}
+                          />
+                        )}
+                        {m.media && m.media.type !== 'MessageMediaPhoto' && (
                           <p className="text-xs text-zinc-400 mb-1 italic">
-                            {m.media.type.includes('Photo') ? '[Photo]' : '[Media]'}
+                            [Media]
                           </p>
                         )}
                         {m.text && <p className="whitespace-pre-wrap break-words">{m.text}</p>}
