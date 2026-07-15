@@ -118,6 +118,12 @@ export function FileExplorer() {
 
   const pathParts = currentDir.split('/').filter(Boolean)
 
+  const quickLinks = [
+    { label: 'Uploads', path: 'uploads' },
+    { label: 'Telegram Uploads', path: 'telegram/uploads' },
+    { label: 'Telegram Downloads', path: 'telegram/downloads' },
+  ]
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -138,7 +144,7 @@ export function FileExplorer() {
 
       <div className="flex items-center gap-1 text-sm text-zinc-400">
         <button onClick={() => loadDir('')} className="hover:text-zinc-200 transition-colors">
-          telegram
+          server
         </button>
         {pathParts.map((part, i) => (
           <span key={i} className="flex items-center gap-1">
@@ -150,6 +156,22 @@ export function FileExplorer() {
               {part}
             </button>
           </span>
+        ))}
+      </div>
+
+      <div className="flex gap-2">
+        {quickLinks.map((link) => (
+          <button
+            key={link.path}
+            onClick={() => loadDir(link.path)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              currentDir === link.path
+                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:text-zinc-200 hover:border-zinc-500'
+            }`}
+          >
+            {link.label}
+          </button>
         ))}
       </div>
 
