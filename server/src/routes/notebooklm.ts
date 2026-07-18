@@ -114,6 +114,15 @@ router.delete('/notebooks/:id/sources/:sourceId', requireAuth, async (req: AuthR
   }
 })
 
+router.get('/notebooks/:id/sources/:sourceId/fulltext', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const data = await sequential(req.params.id, ['source', 'fulltext', String(req.params.sourceId), '--json'], 30000)
+    res.json(data)
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 router.post('/notebooks/:id/chat', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const question = String(req.body.question || '')
