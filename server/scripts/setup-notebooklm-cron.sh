@@ -16,7 +16,10 @@ if [ ! -f "$NLM_BIN" ]; then
 fi
 
 # Create refresh script
-cat > /opt/social/scripts/notebooklm-refresh.sh << 'EOF'
+SCRIPT_DIR="/opt/social/server/scripts"
+mkdir -p "$SCRIPT_DIR"
+
+cat > "$SCRIPT_DIR/notebooklm-refresh.sh" << 'EOF'
 #!/bin/bash
 export PATH="/usr/local/bin:$PATH"
 /usr/local/bin/notebooklm auth refresh >> /var/log/notebooklm-refresh.log 2>&1
@@ -25,7 +28,7 @@ EOF
 chmod +x /opt/social/scripts/notebooklm-refresh.sh
 
 # Add cron job (daily at 3 AM)
-CRON_LINE="0 3 * * * /opt/social/scripts/notebooklm-refresh.sh"
+CRON_LINE="0 3 * * * $SCRIPT_DIR/notebooklm-refresh.sh"
 (crontab -l 2>/dev/null | grep -v "notebooklm-refresh"; echo "$CRON_LINE") | crontab -
 
 echo "Done! Cron job added:"
@@ -33,4 +36,4 @@ echo "  $CRON_LINE"
 echo ""
 echo "Logs: /var/log/notebooklm-refresh.log"
 echo ""
-echo "Test manually: /opt/social/scripts/notebooklm-refresh.sh"
+echo "Test manually: $SCRIPT_DIR/notebooklm-refresh.sh"
