@@ -1,183 +1,147 @@
-import { Router, Request, Response } from 'express'
+import { Router, Response } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
-import { spawn } from 'child_process'
-import path from 'path'
+import { execFile } from 'child_process'
 
 const router = Router()
 
-const NLM_SERVER = process.env.NOTEBOOKLM_SERVER_URL || 'http://127.0.0.1:8000'
-const NLM_TOKEN = process.env.NOTEBOOKLM_SERVER_TOKEN || ''
+const NLM_BIN = process.env.NOTEBOOKLM_BIN || 'notebooklm'
 
-async function nlmFetch(endpoint: string, options: RequestInit = {}): Promise<any> {
-  const res = await fetch(`${NLM_SERVER}/v1${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${NLM_TOKEN}`,
-      ...options.headers,
-    },
+function nlmRun(args: string[], timeout = 30000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(NLM_BIN, [...args, '--json'], { timeout }, (err, stdout, stderr) => {
+      if (err) reject(new Error(stderr || err.message))
+      else resolve(stdout.trim())
+    })
   })
-  if (!res.ok) {
-    const err: any = await res.json().catch(() => ({ error: { message: res.statusText } }))
-    throw new Error(err.error?.message || `NotebookLM error ${res.status}`)
-  }
-  return res.json()
 }
 
-function handleNlm(res: Response, promise: Promise<any>) {
-  promise.then(data => res.json(data)).catch((err: any) => res.status(500).json({ error: err.message }))
+function nlmJson(args: string[], timeout = 30000): Promise<any> {
+  return nlmRun(args, timeout).then(out => JSON.parse(out))
 }
+
+function nb(id: unknown): string { return String(id) }
 
 router.get('/notebooks', requireAuth, async (_req: AuthRequest, res: Response) => {
   try {
-    const data = await nlmFetch('/notebooks')
+    const data = await nlmJson(['list'])
     res.json(data)
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
 router.post('/notebooks', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const data = await nlmFetch('/notebooks', {
-      method: 'POST',
-      body: JSON.stringify(req.body),
-    })
+    const title = String(req.body.title || 'Untitled')
+    const data = await nlmJson(['create', title])
     res.json(data)
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
 router.get('/notebooks/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const data = await nlmFetch(`/notebooks/${req.params.id}`)
+    const data = await nlmJson(['summary', nb(req.params.id)])
     res.json(data)
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
 router.delete('/notebooks/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    await nlmFetch(`/notebooks/${req.params.id}`, { method: 'DELETE' })
+    await nlmRun(['delete', nb(req.params.id)])
     res.json({ ok: true })
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
 router.get('/notebooks/:id/sources', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const data = await nlmFetch(`/notebooks/${req.params.id}/sources`)
+    const data = await nlmJson(['source', 'list', nb(req.params.id)])
     res.json(data)
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
 router.post('/notebooks/:id/sources/url', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const data = await nlmFetch(`/notebooks/${req.params.id}/sources/url`, {
-      method: 'POST',
-      body: JSON.stringify(req.body),
-    })
+    const url = String(req.body.url || '')
+    const data = await nlmJson(['source', 'add', nb(req.params.id), url])
     res.json(data)
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
 router.post('/notebooks/:id/sources/text', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const data = await nlmFetch(`/notebooks/${req.params.id}/sources/text`, {
-      method: 'POST',
-      body: JSON.stringify(req.body),
-    })
+    const text = String(req.body.text || '')
+    const title = req.body.title ? String(req.body.title) : undefined
+    const args = ['source', 'add', nb(req.params.id), '--text', text]
+    if (title) args.push('--title', title)
+    const data = await nlmJson(args)
     res.json(data)
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
 router.delete('/notebooks/:id/sources/:sourceId', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    await nlmFetch(`/notebooks/${req.params.id}/sources/${req.params.sourceId}`, { method: 'DELETE' })
+    await nlmRun(['source', 'delete', nb(req.params.id), nb(req.params.sourceId)])
     res.json({ ok: true })
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
 router.post('/notebooks/:id/chat', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const data = await nlmFetch(`/notebooks/${req.params.id}/chat`, {
-      method: 'POST',
-      body: JSON.stringify(req.body),
-    })
+    const question = String(req.body.question || '')
+    const data = await nlmJson(['ask', nb(req.params.id), question], 60000)
     res.json(data)
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
 router.get('/notebooks/:id/artifacts', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const data = await nlmFetch(`/notebooks/${req.params.id}/artifacts`)
+    const data = await nlmJson(['artifact', 'list', nb(req.params.id)])
     res.json(data)
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
 router.post('/notebooks/:id/artifacts', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const data = await nlmFetch(`/notebooks/${req.params.id}/artifacts`, {
-      method: 'POST',
-      body: JSON.stringify(req.body),
-    })
+    const type = String(req.body.type || '')
+    const data = await nlmJson(['artifact', 'generate', nb(req.params.id), type], 120000)
     res.json(data)
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
-  }
-})
-
-router.get('/notebooks/:id/artifacts/:taskId', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const data = await nlmFetch(`/notebooks/${req.params.id}/artifacts/${req.params.taskId}`)
-    res.json(data)
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
 router.get('/notebooks/:id/notes', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const data = await nlmFetch(`/notebooks/${req.params.id}/notes`)
+    const data = await nlmJson(['note', 'list', nb(req.params.id)])
     res.json(data)
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
-  }
-})
-
-router.post('/notebooks/:id/notes', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const data = await nlmFetch(`/notebooks/${req.params.id}/notes`, {
-      method: 'POST',
-      body: JSON.stringify(req.body),
-    })
-    res.json(data)
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
 router.get('/health', requireAuth, async (_req: AuthRequest, res: Response) => {
   try {
-    const res2 = await fetch(`${NLM_SERVER}/healthz`)
-    const ok = res2.ok
-    res.json({ connected: ok })
+    await nlmRun(['list'], 5000)
+    res.json({ connected: true })
   } catch {
     res.json({ connected: false })
   }
