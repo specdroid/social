@@ -166,7 +166,7 @@ export function NotebookLMPage() {
       const selected = sources.filter(s => selectedSources.has(s.id))
       const sourceNames = selected.length > 0 ? selected.map(s => s.title || s.id).join(', ') : undefined
       const question = sourceNames ? `[About: ${sourceNames}] ${q}` : q
-      const data = await post<{ answer?: string; content?: string; response?: string }>('/api/notebooklm/notebooks/${selectedNb.id}/chat', { question })
+      const data = await post<{ answer?: string; content?: string; response?: string }>(`/api/notebooklm/notebooks/${selectedNb.id}/chat`, { question })
       const answer = data.answer || data.content || data.response || JSON.stringify(data)
       setChat(c => [...c, { role: 'user', content: q }, { role: 'assistant', content: answer }])
     } catch (err) {
@@ -178,7 +178,7 @@ export function NotebookLMPage() {
   const generateArtifact = async (type: string) => {
     if (!selectedNb) return
     try {
-      const data = await post<{ task_id?: string; id?: string }>('/api/notebooklm/notebooks/${selectedNb.id}/artifacts', { type })
+      const data = await post<{ task_id?: string; id?: string }>(`/api/notebooklm/notebooks/${selectedNb.id}/artifacts`, { type })
       showMsg('success', `${type} generation started`)
       pollArtifact(selectedNb.id, data.task_id || data.id || '')
     } catch (err) { showMsg('error', (err as Error).message) }
