@@ -25,7 +25,7 @@ function nb(id: unknown): string { return String(id) }
 router.get('/notebooks', requireAuth, async (_req: AuthRequest, res: Response) => {
   try {
     const data = await nlmJson(['list'])
-    res.json(data)
+    res.json({ notebooks: data.notebooks || data })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
   }
@@ -62,7 +62,7 @@ router.delete('/notebooks/:id', requireAuth, async (req: AuthRequest, res: Respo
 router.get('/notebooks/:id/sources', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const data = await nlmJson(['source', 'list', nb(req.params.id)])
-    res.json(data)
+    res.json({ sources: data.sources || data })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
   }
@@ -113,7 +113,7 @@ router.post('/notebooks/:id/chat', requireAuth, async (req: AuthRequest, res: Re
 router.get('/notebooks/:id/artifacts', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const data = await nlmJson(['artifact', 'list', nb(req.params.id)])
-    res.json(data)
+    res.json({ artifacts: data.artifacts || data })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
   }
@@ -132,7 +132,7 @@ router.post('/notebooks/:id/artifacts', requireAuth, async (req: AuthRequest, re
 router.get('/notebooks/:id/notes', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const data = await nlmJson(['note', 'list', nb(req.params.id)])
-    res.json(data)
+    res.json({ notes: data.notes || data })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
   }
