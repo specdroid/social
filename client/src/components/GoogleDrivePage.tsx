@@ -36,7 +36,8 @@ export function GoogleDrivePage() {
   useEffect(() => { loadStatus() }, [])
 
   const handleConnect = () => {
-    window.location.href = `${API_URL}/api/google/auth`
+    const token = localStorage.getItem('token')
+    window.location.href = `${API_URL}/api/google/auth?token=${token}`
   }
 
   const handleDisconnect = async () => {

@@ -13,8 +13,17 @@ const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3001/a
 
 const SCOPES = ['https://www.googleapis.com/auth/drive']
 
-router.get('/auth', requireAuth, (req: AuthRequest, res: Response) => {
-  const state = req.userId!
+router.get('/auth', async (req: AuthRequest, res: Response) => {
+  const token = req.query.token as string
+  if (!token) { res.status(401).json({ error: 'Authentication required' }); return }
+
+  let userId: string
+  try {
+    const jwt = require('jsonwebtoken')
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string }
+    userId = decoded.userId
+  } catch { res.status(401).json({ error: 'Invalid token' }); return }
+
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: REDIRECT_URI,
@@ -22,7 +31,7 @@ router.get('/auth', requireAuth, (req: AuthRequest, res: Response) => {
     scope: SCOPES.join(' '),
     access_type: 'offline',
     prompt: 'consent',
-    state,
+    state: userId,
   })
   res.redirect(`https://accounts.google.com/o/oauth2/auth?${params.toString()}`)
 })
