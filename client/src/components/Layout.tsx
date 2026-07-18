@@ -25,6 +25,7 @@ const navItems = [
   { path: '/omniroute', label: 'Omniroute', icon: Brain },
   { path: '/telegram', label: 'Telegram', icon: TelegramIcon },
   { path: '/google-drive', label: 'Google Drive', icon: HardDrive },
+  { path: '/notebooklm', label: 'NotebookLM', icon: Brain },
   { path: '/billing', label: 'Billing', icon: CreditCard },
   { path: '/help', label: 'Help', icon: HelpCircle },
 ]

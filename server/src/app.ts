@@ -17,6 +17,7 @@ import telegramRoutes from './routes/telegram'
 import adminRoutes from './routes/admin'
 import fileExplorerRoutes from './routes/fileExplorer'
 import googleDriveRoutes from './routes/googleDrive'
+import notebooklmRoutes from './routes/notebooklm'
 
 export function createApp(): express.Application {
   const app = express()
@@ -158,6 +159,7 @@ export function createApp(): express.Application {
   app.use('/api/admin', adminRoutes)
   app.use('/api/files', fileExplorerRoutes)
   app.use('/api/google', googleDriveRoutes)
+  app.use('/api/notebooklm', notebooklmRoutes)
 
   app.use('/webhooks/meta', metaWebhookRoutes)
   app.use('/webhooks/stripe', stripeWebhookRoutes)
