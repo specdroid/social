@@ -126,7 +126,7 @@ router.get('/notebooks/:id/sources/:sourceId/fulltext', requireAuth, async (req:
 router.post('/notebooks/:id/chat', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const question = String(req.body.question || '')
-    const data = await sequential(req.params.id, ['ask', question, '--json'], 60000)
+    const data = await sequential(req.params.id, ['ask', question, '--json'], 120000)
     res.json(data)
   } catch (err: any) {
     res.status(500).json({ error: err.message })

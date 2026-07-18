@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
-const REQUEST_TIMEOUT = 10000
+const REQUEST_TIMEOUT = 120000
 
 function getToken(): string | null {
   return localStorage.getItem('token')
