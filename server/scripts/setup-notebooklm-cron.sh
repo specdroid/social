@@ -25,7 +25,7 @@ export PATH="/usr/local/bin:$PATH"
 /usr/local/bin/notebooklm auth refresh >> /var/log/notebooklm-refresh.log 2>&1
 EOF
 
-chmod +x /opt/social/scripts/notebooklm-refresh.sh
+chmod +x "$SCRIPT_DIR/notebooklm-refresh.sh"
 
 # Add cron job (daily at 3 AM)
 CRON_LINE="0 3 * * * $SCRIPT_DIR/notebooklm-refresh.sh"
