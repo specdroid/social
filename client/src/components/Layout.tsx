@@ -13,6 +13,7 @@ import {
   X,
   Shield,
   FolderOpen,
+  HardDrive,
 } from 'lucide-react'
 import { TelegramIcon } from './icons/TelegramIcon'
 
@@ -23,6 +24,7 @@ const navItems = [
   { path: '/whatsapp', label: 'WhatsApp', icon: MessageSquare },
   { path: '/omniroute', label: 'Omniroute', icon: Brain },
   { path: '/telegram', label: 'Telegram', icon: TelegramIcon },
+  { path: '/google-drive', label: 'Google Drive', icon: HardDrive },
   { path: '/billing', label: 'Billing', icon: CreditCard },
   { path: '/help', label: 'Help', icon: HelpCircle },
 ]
