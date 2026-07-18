@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { HardDrive, LogIn, LogOut, Check, AlertCircle, Loader2 } from 'lucide-react'
+import { HardDrive, LogIn, LogOut, Check, AlertCircle, Loader2, RefreshCw } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
@@ -10,6 +10,7 @@ export function GoogleDrivePage() {
   const [expired, setExpired] = useState(false)
   const [email, setEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
@@ -52,6 +53,19 @@ export function GoogleDrivePage() {
     setTimeout(() => setMsg(null), 4000)
   }
 
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await post('/api/google/refresh')
+      setExpired(false)
+      setMsg({ type: 'success', text: 'Connection refreshed successfully!' })
+    } catch {
+      setMsg({ type: 'error', text: 'Failed to refresh — reconnect instead' })
+    }
+    setTimeout(() => setMsg(null), 4000)
+    setRefreshing(false)
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -88,13 +102,23 @@ export function GoogleDrivePage() {
               )}
             </div>
             {connected ? (
-              <button
-                onClick={handleDisconnect}
-                className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                Disconnect
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="flex items-center gap-2 px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg text-sm font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  {refreshing ? 'Refreshing...' : 'Refresh'}
+                </button>
+                <button
+                  onClick={handleDisconnect}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Disconnect
+                </button>
+              </div>
             ) : (
               <button
                 onClick={handleConnect}

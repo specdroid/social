@@ -13,6 +13,22 @@ const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3001/a
 
 const SCOPES = ['https://www.googleapis.com/auth/drive']
 
+async function refreshAccessToken(refreshToken: string): Promise<{ access_token: string; expires_in: number } | null> {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    }),
+  })
+  const data: any = await res.json()
+  if (data.error) return null
+  return data
+}
+
 router.get('/auth', async (req: AuthRequest, res: Response) => {
   const token = req.query.token as string
   if (!token) { res.status(401).json({ error: 'Authentication required' }); return }
@@ -97,10 +113,43 @@ router.get('/callback', async (req: AuthRequest, res: Response) => {
 })
 
 router.get('/status', requireAuth, async (req: AuthRequest, res: Response) => {
-  const drive = await prisma.googleDrive.findUnique({ where: { userId: req.userId! } })
+  let drive = await prisma.googleDrive.findUnique({ where: { userId: req.userId! } })
   if (!drive) { res.json({ connected: false }); return }
+
+  if (drive.expiresAt < new Date() && drive.refreshToken) {
+    const refreshed = await refreshAccessToken(drive.refreshToken)
+    if (refreshed) {
+      drive = await prisma.googleDrive.update({
+        where: { userId: req.userId! },
+        data: {
+          accessToken: refreshed.access_token,
+          expiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
+        },
+      })
+    }
+  }
+
   const expired = drive.expiresAt < new Date()
   res.json({ connected: true, expired, email: drive.email })
+})
+
+router.post('/refresh', requireAuth, async (req: AuthRequest, res: Response) => {
+  const drive = await prisma.googleDrive.findUnique({ where: { userId: req.userId! } })
+  if (!drive) { res.status(404).json({ error: 'Not connected' }); return }
+  if (!drive.refreshToken) { res.status(400).json({ error: 'No refresh token' }); return }
+
+  const refreshed = await refreshAccessToken(drive.refreshToken)
+  if (!refreshed) { res.status(400).json({ error: 'Failed to refresh token' }); return }
+
+  await prisma.googleDrive.update({
+    where: { userId: req.userId! },
+    data: {
+      accessToken: refreshed.access_token,
+      expiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
+    },
+  })
+
+  res.json({ ok: true, expired: false })
 })
 
 router.post('/disconnect', requireAuth, async (req: AuthRequest, res: Response) => {
