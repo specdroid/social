@@ -53,13 +53,11 @@ export function NotebookLMPage() {
     setSelectedNb(nb)
     setLoading(true)
     try {
-      const [srcData, noteData, artData] = await Promise.all([
-        get<{ sources?: Source[] }>(`/api/notebooklm/notebooks/${nb.id}/sources`).catch(() => ({ sources: [] })),
-        get<{ notes?: Note[] }>(`/api/notebooklm/notebooks/${nb.id}/notes`).catch(() => ({ notes: [] })),
-        get<{ artifacts?: Artifact[] }>(`/api/notebooklm/notebooks/${nb.id}/artifacts`).catch(() => ({ artifacts: [] })),
-      ])
+      const srcData = await get<{ sources?: Source[] }>(`/api/notebooklm/notebooks/${nb.id}/sources`).catch(() => ({ sources: [] }))
       setSources(srcData.sources || [])
+      const noteData = await get<{ notes?: Note[] }>(`/api/notebooklm/notebooks/${nb.id}/notes`).catch(() => ({ notes: [] }))
       setNotes(noteData.notes || [])
+      const artData = await get<{ artifacts?: Artifact[] }>(`/api/notebooklm/notebooks/${nb.id}/artifacts`).catch(() => ({ artifacts: [] }))
       setArtifacts(artData.artifacts || [])
       setChat([])
     } catch { /* ignore */ }
