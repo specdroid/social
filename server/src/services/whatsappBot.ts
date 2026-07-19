@@ -1780,11 +1780,23 @@ ${baseUrl}/facebook`,
           await sock.sendMessage(sender, { text: `💬 No chat history in *${nb.title}*.` })
         } else {
           const lines = last.map((p: any, i: number) => {
-            const q = (p.question || '').substring(0, 1000)
-            const a = (p.answer || '').substring(0, 1000)
-            return `*#${pairs.length - last.length + i + 1}*\n👤 ${q}\n🤖 ${a}`
+            const q = (p.question || '')
+            const a = (p.answer || '')
+            return `#${pairs.length - last.length + i + 1}\nQ: ${q}\nA: ${a}`
           }).join('\n\n')
-          await sock.sendMessage(sender, { text: `💬 *${nb.title}* (last ${last.length})\n\n${lines}` })
+          const fullText = `Chat History — ${nb.title} (last ${last.length})\n\n${lines}`
+          if (fullText.length > 3000) {
+            const tmpFile = path.join(os.tmpdir(), `chat_${nb.id.slice(0, 8)}_${Date.now()}.txt`)
+            fs.writeFileSync(tmpFile, fullText)
+            await sock.sendMessage(sender, {
+              document: fs.readFileSync(tmpFile),
+              fileName: `${nb.title.slice(0, 50)}_chat.txt`,
+              mimetype: 'text/plain',
+            })
+            fs.unlinkSync(tmpFile)
+          } else {
+            await sock.sendMessage(sender, { text: `💬 *${nb.title}* (last ${last.length})\n\n${lines}` })
+          }
         }
       }
     } catch (err: any) {
