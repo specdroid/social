@@ -28,6 +28,7 @@ export function NotebookLMPage() {
   const [loading, setLoading] = useState(false)
   const [chatLoading, setChatLoading] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState(0)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [tab, setTab] = useState<'sources' | 'chat' | 'notes' | 'artifacts'>('sources')
   const [newNbTitle, setNewNbTitle] = useState('')
@@ -205,25 +206,38 @@ export function NotebookLMPage() {
     showMsg('error', 'Timed out waiting for artifact')
   }
 
-  const downloadArtifact = async (artifactId: string) => {
+  const downloadArtifact = (artifactId: string) => {
     if (!selectedNb || downloadingId) return
     setDownloadingId(artifactId)
-    try {
-      const token = localStorage.getItem('token')
-      const res = await fetch(`${API_URL}/api/notebooklm/notebooks/${selectedNb.id}/artifacts/${artifactId}/download`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
-      if (!res.ok) throw new Error('Download failed')
-      const blob = await res.blob()
-      const disposition = res.headers.get('Content-Disposition') || ''
-      const filenameMatch = disposition.match(/filename="?(.+?)"?$/)
-      const filename = filenameMatch ? filenameMatch[1] : 'download'
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = filename; a.click()
-      URL.revokeObjectURL(url)
-    } catch (err) { showMsg('error', (err as Error).message) }
-    setDownloadingId(null)
+    setDownloadProgress(0)
+    const token = localStorage.getItem('token')
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', `${API_URL}/api/notebooklm/notebooks/${selectedNb.id}/artifacts/${artifactId}/download`)
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.responseType = 'blob'
+    xhr.onprogress = (e) => {
+      if (e.lengthComputable) {
+        setDownloadProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const blob = xhr.response
+        const disposition = xhr.getResponseHeader('Content-Disposition') || ''
+        const filenameMatch = disposition.match(/filename="?(.+?)"?$/)
+        const filename = filenameMatch ? filenameMatch[1] : 'download'
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = filename; a.click()
+        URL.revokeObjectURL(url)
+      } else {
+        showMsg('error', 'Download failed')
+      }
+      setDownloadingId(null)
+      setDownloadProgress(0)
+    }
+    xhr.onerror = () => { showMsg('error', 'Download failed'); setDownloadingId(null); setDownloadProgress(0) }
+    xhr.send()
   }
 
   const timeAgo = (dateStr: string) => {
@@ -286,11 +300,22 @@ export function NotebookLMPage() {
 
       {downloadingId && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col items-center gap-4 shadow-2xl">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col items-center gap-4 shadow-2xl min-w-[280px]">
             <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
-            <div className="text-center">
+            <div className="text-center w-full">
               <p className="text-zinc-50 font-medium">Downloading artifact...</p>
-              <p className="text-zinc-500 text-sm mt-1">This may take a moment</p>
+              <div className="mt-3 w-full">
+                <div className="flex justify-between text-xs text-zinc-500 mb-1">
+                  <span>{downloadProgress < 100 ? 'Receiving data...' : 'Processing...'}</span>
+                  <span>{downloadProgress}%</span>
+                </div>
+                <div className="w-full bg-zinc-800 rounded-full h-2">
+                  <div
+                    className="bg-purple-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${downloadProgress}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
