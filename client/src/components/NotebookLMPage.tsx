@@ -10,7 +10,9 @@ interface Notebook { id: string; title: string; createdAt?: string }
 interface Source { id: string; title?: string; sourceType?: string; type?: string; status?: string }
 interface Note { id: string; title?: string; preview?: string; content?: string }
 interface ChatMsg { role: 'user' | 'assistant'; content: string }
-interface Artifact { id: string; type?: string; type_id?: string; title?: string; status?: string }
+interface Artifact { id: string; type?: string; type_id?: string; title?: string; status?: string; created_at?: string }
+
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 export function NotebookLMPage() {
   const { get, post, del } = useApi()
@@ -201,6 +203,25 @@ export function NotebookLMPage() {
       } catch { /* retry */ }
     }
     showMsg('error', 'Timed out waiting for artifact')
+  }
+
+  const downloadArtifact = async (artifactId: string) => {
+    if (!selectedNb) return
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`${API_URL}/api/notebooklm/notebooks/${selectedNb.id}/artifacts/${artifactId}/download`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error('Download failed')
+      const blob = await res.blob()
+      const disposition = res.headers.get('Content-Disposition') || ''
+      const filenameMatch = disposition.match(/filename="?(.+?)"?$/)
+      const filename = filenameMatch ? filenameMatch[1] : 'download'
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = filename; a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) { showMsg('error', (err as Error).message) }
   }
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chat])
@@ -403,12 +424,18 @@ export function NotebookLMPage() {
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-zinc-500 uppercase">Generated</p>
                       {artifacts.map(a => (
-                        <div key={a.id} className="flex items-center gap-2 px-3 py-2 bg-zinc-950 rounded-lg">
+                        <div key={a.id} className="flex items-center gap-2 px-3 py-2 bg-zinc-950 rounded-lg group">
                           <Download className="w-4 h-4 text-zinc-500 shrink-0" />
                           <span className="text-sm text-zinc-400 truncate">{a.title || a.type_id || a.type}</span>
-                          <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${a.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : a.status === 'processing' ? 'bg-amber-500/10 text-amber-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                          {a.created_at && <span className="text-xs text-zinc-600 shrink-0">{new Date(a.created_at).toLocaleDateString()}</span>}
+                          <span className={`ml-auto text-xs px-2 py-0.5 rounded-full shrink-0 ${a.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : a.status === 'processing' ? 'bg-amber-500/10 text-amber-400' : 'bg-zinc-800 text-zinc-500'}`}>
                             {a.status}
                           </span>
+                          {a.status === 'completed' && (
+                            <button onClick={(e) => { e.stopPropagation(); downloadArtifact(a.id) }} className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-zinc-300 transition-opacity">
+                              <Download className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>

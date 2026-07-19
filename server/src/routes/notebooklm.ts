@@ -153,6 +153,40 @@ router.post('/notebooks/:id/artifacts', requireAuth, async (req: AuthRequest, re
   }
 })
 
+router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const artId = String(req.params.artifactId)
+    const artifact = await sequential(req.params.id, ['artifact', 'get', artId, '--json'])
+    const artifactType = artifact?.type_id || artifact?.type || 'report'
+
+    const tmpDir = `/tmp/nlm-download-${Date.now()}`
+    const fs = require('fs')
+    fs.mkdirSync(tmpDir, { recursive: true })
+
+    await sequential(req.params.id, ['use', String(req.params.id)])
+    await nlmRun(['download', artifactType, '--output', tmpDir], 120000)
+
+    const files = fs.readdirSync(tmpDir)
+    if (files.length === 0) {
+      res.status(404).json({ error: 'No file downloaded' })
+      return
+    }
+
+    const filePath = `${tmpDir}/${files[0]}`
+    const ext = files[0].split('.').pop() || ''
+    const mimeMap: Record<string, string> = {
+      mp3: 'audio/mpeg', pdf: 'application/pdf', md: 'text/markdown',
+      csv: 'text/csv', json: 'application/json', png: 'image/png',
+      jpg: 'image/jpeg', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="${files[0]}"`)
+    res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream')
+    res.sendFile(filePath, () => { fs.rmSync(tmpDir, { recursive: true, force: true }) })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 router.get('/notebooks/:id/notes', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const data = await sequential(req.params.id, ['note', 'list', '--json'])
