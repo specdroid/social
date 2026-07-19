@@ -80,9 +80,9 @@ export function NotebookLMPage() {
       setArtifacts(artData.artifacts || [])
       const histData = await get<any>(`/api/notebooklm/notebooks/${nb.id}/history`).catch(() => null)
       if (histData) {
-        const turns = histData.turns || histData.history || (Array.isArray(histData) ? histData : [])
+        const pairs = histData.qa_pairs || histData.turns || histData.history || (Array.isArray(histData) ? histData : [])
         const msgs: ChatMsg[] = []
-        for (const t of turns) {
+        for (const t of pairs) {
           const q = t.question || t.q || t.prompt || ''
           const a = t.answer || t.a || t.response || t.content || ''
           if (q) msgs.push({ role: 'user', content: q })
@@ -110,9 +110,9 @@ export function NotebookLMPage() {
       } else if (tab === 'chat') {
         const histData = await get<any>(`/api/notebooklm/notebooks/${selectedNb.id}/history`).catch(() => null)
         if (histData) {
-          const turns = histData.turns || histData.history || (Array.isArray(histData) ? histData : [])
+          const pairs = histData.qa_pairs || histData.turns || histData.history || (Array.isArray(histData) ? histData : [])
           const msgs: ChatMsg[] = []
-          for (const t of turns) {
+          for (const t of pairs) {
             const q = t.question || t.q || t.prompt || ''
             const a = t.answer || t.a || t.response || t.content || ''
             if (q) msgs.push({ role: 'user', content: q })
