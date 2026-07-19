@@ -157,14 +157,15 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
   try {
     const artId = String(req.params.artifactId)
     const artifact = await sequential(req.params.id, ['artifact', 'get', artId, '--json'])
-    const artifactType = artifact?.type_id || artifact?.type || 'report'
+    const artifactType = (artifact?.type_id || artifact?.type || 'report').replace('-', '_').replace('slide_deck', 'slide-deck')
     const artifactTitle = artifact?.title || artId
 
     const tmpDir = `/tmp/nlm-dl-${Date.now()}`
     const fs = require('fs')
     fs.mkdirSync(tmpDir, { recursive: true })
 
-    await nlmRun(['download', artifactType, '--output', tmpDir], 120000)
+    const outputPath = `${tmpDir}/download`
+    await nlmRun(['download', artifactType, '--artifact', artId, outputPath], 120000)
 
     const files = fs.readdirSync(tmpDir).filter((f: string) => !f.startsWith('.'))
     if (files.length === 0) {
