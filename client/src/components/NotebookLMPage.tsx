@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   BookOpen, Plus, Trash2, FileText, Send,
   Link as LinkIcon, Loader2, AlertCircle, Check,
-  Brain, Download, Volume2, Layers, Zap, MessageSquare
+  Brain, Download, Volume2, Layers, Zap, MessageSquare, Upload
 } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 
@@ -29,6 +29,8 @@ export function NotebookLMPage() {
   const [chatLoading, setChatLoading] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [downloadProgress, setDownloadProgress] = useState(0)
+  const [exportingId, setExportingId] = useState<string | null>(null)
+  const [googleDriveConnected, setGoogleDriveConnected] = useState(false)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [tab, setTab] = useState<'sources' | 'chat' | 'notes' | 'artifacts'>('sources')
   const [newNbTitle, setNewNbTitle] = useState('')
@@ -38,7 +40,7 @@ export function NotebookLMPage() {
   const [sourceTitle, setSourceTitle] = useState('')
   const chatEndRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { checkHealth() }, [])
+  useEffect(() => { checkHealth(); checkGoogleDrive() }, [])
 
   const checkHealth = async () => {
     try {
@@ -46,6 +48,15 @@ export function NotebookLMPage() {
       setConnected(data.connected)
       if (data.connected) loadNotebooks()
     } catch { setConnected(false) }
+  }
+
+  const checkGoogleDrive = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`${API_URL}/api/google/status`, { headers: { 'Authorization': `Bearer ${token}` } })
+      const data = await res.json()
+      setGoogleDriveConnected(data.connected && !data.expired)
+    } catch { setGoogleDriveConnected(false) }
   }
 
   const loadNotebooks = async () => {
@@ -242,6 +253,24 @@ export function NotebookLMPage() {
     } catch (err) { if ((err as Error).name !== 'AbortError') showMsg('error', (err as Error).message) }
     setDownloadingId(null)
     setDownloadProgress(0)
+  }
+
+  const exportToDrive = async (artifactId: string, driveType: 'google-sheets' | 'google-docs') => {
+    if (!selectedNb || exportingId) return
+    setExportingId(artifactId)
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`${API_URL}/api/google/export`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notebookId: selectedNb.id, artifactId, type: driveType }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Export failed')
+      showMsg('success', `Exported to ${driveType === 'google-sheets' ? 'Google Sheets' : 'Google Docs'}: ${data.name}`)
+      window.open(data.url, '_blank')
+    } catch (err) { showMsg('error', (err as Error).message) }
+    setExportingId(null)
   }
 
   const timeAgo = (dateStr: string) => {
@@ -487,13 +516,35 @@ export function NotebookLMPage() {
                             {a.status}
                           </span>
                           {a.status === 'completed' && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); downloadArtifact(a.id) }}
-                              disabled={downloadingId !== null}
-                              className={`opacity-0 group-hover:opacity-100 transition-opacity ${downloadingId === a.id ? 'opacity-100 text-purple-400' : downloadingId ? 'text-zinc-700 cursor-not-allowed' : 'text-zinc-500 hover:text-zinc-300'}`}
-                            >
-                              {downloadingId === a.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                            </button>
+                            <>
+                              {googleDriveConnected && (a.type_id === 'flashcards' || a.type_id === 'quiz' || a.type_id === 'data-table') && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); exportToDrive(a.id, 'google-sheets') }}
+                                  disabled={exportingId !== null || downloadingId !== null}
+                                  className={`opacity-0 group-hover:opacity-100 transition-opacity ${exportingId === a.id ? 'opacity-100 text-emerald-400' : exportingId ? 'text-zinc-700 cursor-not-allowed' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                  title="Export to Google Sheets"
+                                >
+                                  {exportingId === a.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                </button>
+                              )}
+                              {googleDriveConnected && (a.type_id === 'report' || a.type_id === 'slide-deck' || a.type_id === 'mind-map') && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); exportToDrive(a.id, 'google-docs') }}
+                                  disabled={exportingId !== null || downloadingId !== null}
+                                  className={`opacity-0 group-hover:opacity-100 transition-opacity ${exportingId === a.id ? 'opacity-100 text-emerald-400' : exportingId ? 'text-zinc-700 cursor-not-allowed' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                  title="Export to Google Docs"
+                                >
+                                  {exportingId === a.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                </button>
+                              )}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); downloadArtifact(a.id) }}
+                                disabled={downloadingId !== null}
+                                className={`opacity-0 group-hover:opacity-100 transition-opacity ${downloadingId === a.id ? 'opacity-100 text-purple-400' : downloadingId ? 'text-zinc-700 cursor-not-allowed' : 'text-zinc-500 hover:text-zinc-300'}`}
+                              >
+                                {downloadingId === a.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                              </button>
+                            </>
                           )}
                         </div>
                       ))}

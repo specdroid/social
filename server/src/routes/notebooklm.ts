@@ -239,9 +239,13 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
 
     const ext = downloadFile.split('.').pop() || ''
     const mimeMap: Record<string, string> = {
-      mp3: 'audio/mpeg', pdf: 'application/pdf', md: 'text/markdown',
-      csv: 'text/csv', json: 'application/json', png: 'image/png',
-      jpg: 'image/jpeg', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      mp3: 'audio/mpeg', mp4: 'video/mp4', m4a: 'audio/mp4', webm: 'video/webm', ogg: 'audio/ogg', wav: 'audio/wav',
+      pdf: 'application/pdf', md: 'text/markdown', csv: 'text/csv',
+      json: 'application/json', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      html: 'text/html', txt: 'text/plain',
     }
     console.log(`[download] sending file ${downloadFile} ext=${ext} size=${fileSize}`)
     res.setHeader('Content-Disposition', `attachment; filename="${artifactTitle}.${ext}"`)
