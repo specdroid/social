@@ -162,7 +162,6 @@ export function NotebookLMPage() {
     if (!selectedNb || !chatInput.trim()) return
     const q = chatInput.trim()
     setChatInput('')
-    setChat(c => [...c, { role: 'user', content: q }])
     setChatLoading(true)
     try {
       const selected = sources.filter(s => selectedSources.has(s.id))
@@ -425,7 +424,6 @@ export function NotebookLMPage() {
                       <p className="text-xs font-semibold text-zinc-500 uppercase">Generated</p>
                       {artifacts.map(a => (
                         <div key={a.id} className="flex items-center gap-2 px-3 py-2 bg-zinc-950 rounded-lg group">
-                          <Download className="w-4 h-4 text-zinc-500 shrink-0" />
                           <span className="text-sm text-zinc-400 truncate">{a.title || a.type_id || a.type}</span>
                           {a.created_at && <span className="text-xs text-zinc-600 shrink-0">{new Date(a.created_at).toLocaleDateString()}</span>}
                           <span className={`ml-auto text-xs px-2 py-0.5 rounded-full shrink-0 ${a.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : a.status === 'processing' ? 'bg-amber-500/10 text-amber-400' : 'bg-zinc-800 text-zinc-500'}`}>

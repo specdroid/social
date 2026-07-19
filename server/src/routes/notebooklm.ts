@@ -158,16 +158,17 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
     const artId = String(req.params.artifactId)
     const artifact = await sequential(req.params.id, ['artifact', 'get', artId, '--json'])
     const artifactType = artifact?.type_id || artifact?.type || 'report'
+    const artifactTitle = artifact?.title || artId
 
-    const tmpDir = `/tmp/nlm-download-${Date.now()}`
+    const tmpDir = `/tmp/nlm-dl-${Date.now()}`
     const fs = require('fs')
     fs.mkdirSync(tmpDir, { recursive: true })
 
-    await sequential(req.params.id, ['use', String(req.params.id)])
     await nlmRun(['download', artifactType, '--output', tmpDir], 120000)
 
-    const files = fs.readdirSync(tmpDir)
+    const files = fs.readdirSync(tmpDir).filter((f: string) => !f.startsWith('.'))
     if (files.length === 0) {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
       res.status(404).json({ error: 'No file downloaded' })
       return
     }
@@ -179,7 +180,7 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
       csv: 'text/csv', json: 'application/json', png: 'image/png',
       jpg: 'image/jpeg', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     }
-    res.setHeader('Content-Disposition', `attachment; filename="${files[0]}"`)
+    res.setHeader('Content-Disposition', `attachment; filename="${artifactTitle}.${ext}"`)
     res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream')
     res.sendFile(filePath, () => { fs.rmSync(tmpDir, { recursive: true, force: true }) })
   } catch (err: any) {
