@@ -27,6 +27,7 @@ export function NotebookLMPage() {
   const [chatInput, setChatInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [chatLoading, setChatLoading] = useState(false)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [tab, setTab] = useState<'sources' | 'chat' | 'notes' | 'artifacts'>('sources')
   const [newNbTitle, setNewNbTitle] = useState('')
@@ -205,7 +206,8 @@ export function NotebookLMPage() {
   }
 
   const downloadArtifact = async (artifactId: string) => {
-    if (!selectedNb) return
+    if (!selectedNb || downloadingId) return
+    setDownloadingId(artifactId)
     try {
       const token = localStorage.getItem('token')
       const res = await fetch(`${API_URL}/api/notebooklm/notebooks/${selectedNb.id}/artifacts/${artifactId}/download`, {
@@ -221,6 +223,7 @@ export function NotebookLMPage() {
       a.href = url; a.download = filename; a.click()
       URL.revokeObjectURL(url)
     } catch (err) { showMsg('error', (err as Error).message) }
+    setDownloadingId(null)
   }
 
   const timeAgo = (dateStr: string) => {
@@ -278,6 +281,18 @@ export function NotebookLMPage() {
           <Brain className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-zinc-300 mb-2">NotebookLM Not Connected</h3>
           <p className="text-zinc-500 text-sm mb-4">Run on VPS: notebooklm list --json</p>
+        </div>
+      )}
+
+      {downloadingId && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col items-center gap-4 shadow-2xl">
+            <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+            <div className="text-center">
+              <p className="text-zinc-50 font-medium">Downloading artifact...</p>
+              <p className="text-zinc-500 text-sm mt-1">This may take a moment</p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -443,8 +458,12 @@ export function NotebookLMPage() {
                             {a.status}
                           </span>
                           {a.status === 'completed' && (
-                            <button onClick={(e) => { e.stopPropagation(); downloadArtifact(a.id) }} className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-zinc-300 transition-opacity">
-                              <Download className="w-4 h-4" />
+                            <button
+                              onClick={(e) => { e.stopPropagation(); downloadArtifact(a.id) }}
+                              disabled={downloadingId !== null}
+                              className={`opacity-0 group-hover:opacity-100 transition-opacity ${downloadingId === a.id ? 'opacity-100 text-purple-400' : downloadingId ? 'text-zinc-700 cursor-not-allowed' : 'text-zinc-500 hover:text-zinc-300'}`}
+                            >
+                              {downloadingId === a.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                             </button>
                           )}
                         </div>
