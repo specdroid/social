@@ -147,7 +147,8 @@ router.post('/notebooks/:id/chat', requireAuth, async (req: AuthRequest, res: Re
 router.get('/notebooks/:id/artifacts', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const data = await sequential(req.params.id, ['artifact', 'list', '--json'])
-    const artifacts = Array.isArray(data) ? data : (data?.artifacts || [])
+    const raw = Array.isArray(data) ? data : (data?.artifacts || [])
+    const artifacts = raw.map((a: any) => ({ ...a, type_id: (a.type_id || a.type || '').replace(/_/g, '-') }))
     res.json({ artifacts })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
