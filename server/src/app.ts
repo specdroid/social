@@ -123,6 +123,21 @@ export function createApp(): express.Application {
           description: 'Send a message directly to specific WhatsApp groups (you must be admin).',
           example: 'ws my group: Hello!',
         },
+        {
+          command: 'ws notebooks',
+          description: 'List all your NotebookLM notebooks.',
+          example: 'ws notebooks',
+        },
+        {
+          command: 'ws notebook <name> chat [limit]',
+          description: 'Get chat history from a notebook. Name is fuzzy-matched.',
+          example: 'ws notebook math chat 5',
+        },
+        {
+          command: 'ws notebook <name> quizes',
+          description: 'List all quizzes in a notebook. Name is fuzzy-matched.',
+          example: 'ws notebook math quizes',
+        },
       ],
       note: 'All commands are sent as self-chat messages (message yourself). Append -h to any ws command for specific help (e.g. "ws create rule -h").',
     })
