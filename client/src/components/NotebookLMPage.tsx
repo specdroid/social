@@ -78,6 +78,18 @@ export function NotebookLMPage() {
       setNotes(noteData.notes || [])
       const artData = await get<{ artifacts?: Artifact[] }>(`/api/notebooklm/notebooks/${nb.id}/artifacts`).catch(() => ({ artifacts: [] }))
       setArtifacts(artData.artifacts || [])
+      const histData = await get<any>(`/api/notebooklm/notebooks/${nb.id}/history`).catch(() => null)
+      if (histData) {
+        const turns = histData.turns || histData.history || (Array.isArray(histData) ? histData : [])
+        const msgs: ChatMsg[] = []
+        for (const t of turns) {
+          const q = t.question || t.q || t.prompt || ''
+          const a = t.answer || t.a || t.response || t.content || ''
+          if (q) msgs.push({ role: 'user', content: q })
+          if (a) msgs.push({ role: 'assistant', content: a })
+        }
+        setChat(msgs)
+      }
     } catch { /* ignore */ }
     setLoading(false)
   }
@@ -95,6 +107,19 @@ export function NotebookLMPage() {
       } else if (tab === 'artifacts') {
         const data = await get<{ artifacts?: Artifact[] }>(`/api/notebooklm/notebooks/${selectedNb.id}/artifacts`).catch(() => ({ artifacts: [] }))
         setArtifacts(data.artifacts || [])
+      } else if (tab === 'chat') {
+        const histData = await get<any>(`/api/notebooklm/notebooks/${selectedNb.id}/history`).catch(() => null)
+        if (histData) {
+          const turns = histData.turns || histData.history || (Array.isArray(histData) ? histData : [])
+          const msgs: ChatMsg[] = []
+          for (const t of turns) {
+            const q = t.question || t.q || t.prompt || ''
+            const a = t.answer || t.a || t.response || t.content || ''
+            if (q) msgs.push({ role: 'user', content: q })
+            if (a) msgs.push({ role: 'assistant', content: a })
+          }
+          setChat(msgs)
+        }
       }
     } catch { /* ignore */ }
     setLoading(false)

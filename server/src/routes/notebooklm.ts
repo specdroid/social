@@ -144,6 +144,15 @@ router.post('/notebooks/:id/chat', requireAuth, async (req: AuthRequest, res: Re
   }
 })
 
+router.get('/notebooks/:id/history', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const data = await sequential(req.params.id, ['history', '--json', '--show-all'], 60000)
+    res.json(data)
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 router.get('/notebooks/:id/artifacts', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const data = await sequential(req.params.id, ['artifact', 'list', '--json'])
