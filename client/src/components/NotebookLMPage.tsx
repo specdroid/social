@@ -217,42 +217,36 @@ export function NotebookLMPage() {
     showMsg('error', 'Timed out waiting for artifact')
   }
 
-  const downloadArtifact = async (artifactId: string) => {
+  const downloadArtifact = (artifactId: string) => {
     if (!selectedNb || downloadingId) return
     setDownloadingId(artifactId)
     setDownloadProgress(0)
-    try {
-      const token = localStorage.getItem('token')
-      const controller = new AbortController()
-      const res = await fetch(`${API_URL}/api/notebooklm/notebooks/${selectedNb.id}/artifacts/${artifactId}/download`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-        signal: controller.signal,
-      })
-      if (!res.ok) throw new Error('Download failed')
-      const contentLength = res.headers.get('Content-Length')
-      const total = contentLength ? parseInt(contentLength, 10) : 0
-      const reader = res.body!.getReader()
-      const chunks: Uint8Array[] = []
-      let loaded = 0
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        chunks.push(value)
-        loaded += value.length
-        if (total > 0) setDownloadProgress(Math.round((loaded / total) * 100))
+    const token = localStorage.getItem('token')
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', `${API_URL}/api/notebooklm/notebooks/${selectedNb.id}/artifacts/${artifactId}/download`)
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.onprogress = (e) => {
+      if (e.lengthComputable) setDownloadProgress(Math.round((e.loaded / e.total) * 100))
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const blob = xhr.response
+        const disposition = xhr.getResponseHeader('Content-Disposition') || ''
+        const filenameMatch = disposition.match(/filename="?(.+?)"?$/)
+        const filename = filenameMatch ? filenameMatch[1] : 'download'
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = filename; a.click()
+        URL.revokeObjectURL(url)
+      } else {
+        showMsg('error', 'Download failed')
       }
-      setDownloadProgress(100)
-      const blob = new Blob(chunks as BlobPart[])
-      const disposition = res.headers.get('Content-Disposition') || ''
-      const filenameMatch = disposition.match(/filename="?(.+?)"?$/)
-      const filename = filenameMatch ? filenameMatch[1] : 'download'
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = filename; a.click()
-      URL.revokeObjectURL(url)
-    } catch (err) { if ((err as Error).name !== 'AbortError') showMsg('error', (err as Error).message) }
-    setDownloadingId(null)
-    setDownloadProgress(0)
+      setDownloadingId(null)
+      setDownloadProgress(0)
+    }
+    xhr.onerror = () => { showMsg('error', 'Download failed'); setDownloadingId(null); setDownloadProgress(0) }
+    xhr.responseType = 'blob'
+    xhr.send()
   }
 
   const exportToDrive = async (artifactId: string, driveType: 'google-sheets' | 'google-docs') => {
