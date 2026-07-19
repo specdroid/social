@@ -146,7 +146,7 @@ router.get('/notebooks/:id/artifacts', requireAuth, async (req: AuthRequest, res
 router.post('/notebooks/:id/artifacts', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const type = String(req.body.type || '')
-    const data = await sequential(req.params.id, ['artifact', 'generate', type, '--json'], 120000)
+    const data = await sequential(req.params.id, ['generate', type, '--json'], 120000)
     res.json(data)
   } catch (err: any) {
     res.status(500).json({ error: err.message })
