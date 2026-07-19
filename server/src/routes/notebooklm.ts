@@ -19,6 +19,15 @@ function nlmRun(args: string[], timeout = 30000): Promise<string> {
   })
 }
 
+function nlmRunWithStderr(args: string[], timeout = 30000): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(NLM_BIN, args, { timeout }, (err, stdout, stderr) => {
+      if (err) reject(new Error(stderr || err.message))
+      else resolve({ stdout: stdout.trim(), stderr: stderr.trim() })
+    })
+  })
+}
+
 function nlmJson(args: string[], timeout = 30000): Promise<any> {
   return nlmRun(args, timeout).then(out => {
     try { return JSON.parse(out) } catch { return out }
@@ -173,36 +182,59 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
     const artifact = await nlmJson(['artifact', 'get', artId, '--json'], 60000)
     const artifactType = (artifact?.type_id || artifact?.type || 'report').replace(/_/g, '-')
     const artifactTitle = artifact?.title || artId
-    console.log(`[download] artifact type=${artifactType} title=${artifactTitle}`)
+    console.log(`[download] artifact type=${artifactType} title=${artifactTitle} status=${artifact?.status}`)
 
     const tmpDir = `/tmp/nlm-dl-${Date.now()}`
     const fs = require('fs')
     fs.mkdirSync(tmpDir, { recursive: true })
 
-    const outputPath = `${tmpDir}/download`
-    console.log(`[download] running CLI download ${artifactType} --artifact ${artId} ${outputPath}`)
-    await nlmRun(['download', artifactType, '--artifact', artId, outputPath], 600000)
-    console.log('[download] CLI download done')
+    console.log(`[download] running: notebooklm download ${artifactType} --artifact ${artId} ${tmpDir}`)
+    const { stdout, stderr } = await nlmRunWithStderr(['download', artifactType, '--artifact', artId, tmpDir], 600000)
+    console.log(`[download] CLI stdout: ${stdout}`)
+    console.log(`[download] CLI stderr: ${stderr}`)
 
-    const files = fs.readdirSync(tmpDir).filter((f: string) => !f.startsWith('.'))
-    if (files.length === 0) {
+    function listFilesRecursive(dir: string): string[] {
+      const entries = fs.readdirSync(dir, { withFileTypes: true })
+      const files: string[] = []
+      for (const entry of entries) {
+        const fullPath = `${dir}/${entry.name}`
+        if (entry.isDirectory()) files.push(...listFilesRecursive(fullPath))
+        else files.push(fullPath)
+      }
+      return files
+    }
+
+    const allFiles = listFilesRecursive(tmpDir)
+    console.log(`[download] Files found: ${JSON.stringify(allFiles.map(f => ({ path: f, size: fs.statSync(f).size })))}`)
+
+    const downloadFile = allFiles.find((f: string) => !f.includes('.state') && !f.includes('.json'))
+    if (!downloadFile) {
       fs.rmSync(tmpDir, { recursive: true, force: true })
-      console.log('[download] No files found in tmp dir')
-      res.status(404).json({ error: 'No file downloaded' })
+      console.log('[download] No download file found')
+      res.status(404).json({ error: 'No file downloaded', details: stdout || stderr })
       return
     }
 
-    const filePath = `${tmpDir}/${files[0]}`
-    const ext = files[0].split('.').pop() || ''
+    const fileSize = fs.statSync(downloadFile).size
+    console.log(`[download] file: ${downloadFile} size: ${fileSize}`)
+
+    if (fileSize === 0) {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+      console.log('[download] File is empty')
+      res.status(500).json({ error: 'Downloaded file is empty', details: stdout || stderr })
+      return
+    }
+
+    const ext = downloadFile.split('.').pop() || ''
     const mimeMap: Record<string, string> = {
       mp3: 'audio/mpeg', pdf: 'application/pdf', md: 'text/markdown',
       csv: 'text/csv', json: 'application/json', png: 'image/png',
       jpg: 'image/jpeg', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     }
-    console.log(`[download] sending file ${filePath} (${ext})`)
+    console.log(`[download] sending file ${downloadFile} ext=${ext}`)
     res.setHeader('Content-Disposition', `attachment; filename="${artifactTitle}.${ext}"`)
     res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream')
-    res.sendFile(filePath, () => { fs.rmSync(tmpDir, { recursive: true, force: true }) })
+    res.sendFile(downloadFile, () => { fs.rmSync(tmpDir, { recursive: true, force: true }) })
   } catch (err: any) {
     console.error('[download] ERROR:', err.message)
     res.status(500).json({ error: err.message })
