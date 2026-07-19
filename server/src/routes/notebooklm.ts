@@ -248,12 +248,17 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
       html: 'text/html', txt: 'text/plain',
     }
     console.log(`[download] sending file ${downloadFile} ext=${ext} size=${fileSize}`)
-    res.sendFile(downloadFile, (err) => {
-      if (err) console.error('[download] sendFile error:', err.message)
-      fs.rmSync(tmpDir, { recursive: true, force: true })
-      downloadRunning = false
-      if (downloadTimer) { clearTimeout(downloadTimer); downloadTimer = null }
-    })
+    const safeTitle = artifactTitle.replace(/[^a-zA-Z0-9 _\-\.]/g, '_').substring(0, 100)
+    const contentType = mimeMap[ext] || 'application/octet-stream'
+    const buffer = fs.readFileSync(downloadFile)
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.${ext}"`)
+    res.setHeader('Content-Length', buffer.length)
+    res.end(buffer)
+    console.log('[download] response sent OK')
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch {}
+    downloadRunning = false
+    if (downloadTimer) { clearTimeout(downloadTimer); downloadTimer = null }
   } catch (err: any) {
     console.error('[download] ERROR:', err.message)
     downloadRunning = false
