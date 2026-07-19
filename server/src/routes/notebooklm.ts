@@ -215,7 +215,8 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
     const allFiles = listFilesRecursive(tmpDir)
     console.log(`[download] Files found: ${JSON.stringify(allFiles.map(f => ({ path: f, size: fs.statSync(f).size })))}`)
 
-    const downloadFile = allFiles.find((f: string) => !f.includes('.state') && !f.includes('.json'))
+    const downloadFile = allFiles.find((f: string) => !f.includes('.state') && !f.endsWith('.pyc'))
+      || allFiles[0]
     if (!downloadFile) {
       fs.rmSync(tmpDir, { recursive: true, force: true })
       console.log('[download] No download file found')
