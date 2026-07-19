@@ -9,6 +9,7 @@ const NLM_BIN = process.env.NOTEBOOKLM_BIN || 'notebooklm'
 
 let nlmQueue: Promise<any> = Promise.resolve()
 let downloadRunning = false
+let downloadTimer: ReturnType<typeof setTimeout> | null = null
 
 function nlmRun(args: string[], timeout = 30000): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -174,6 +175,8 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
     return
   }
   downloadRunning = true
+  if (downloadTimer) clearTimeout(downloadTimer)
+  downloadTimer = setTimeout(() => { downloadRunning = false }, 600000)
 
   try {
     await nlmRun(['use', nbId], 60000)
@@ -241,19 +244,17 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
       jpg: 'image/jpeg', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     }
     console.log(`[download] sending file ${downloadFile} ext=${ext} size=${fileSize}`)
-    res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream')
     res.setHeader('Content-Disposition', `attachment; filename="${artifactTitle}.${ext}"`)
-    res.setHeader('Content-Length', fileSize)
-    res.setHeader('Cache-Control', 'no-cache')
-    const buffer = fs.readFileSync(downloadFile)
-    res.end(buffer)
-    console.log('[download] response sent successfully')
-    fs.rmSync(tmpDir, { recursive: true, force: true })
+    res.sendFile(downloadFile, () => {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+      downloadRunning = false
+      if (downloadTimer) { clearTimeout(downloadTimer); downloadTimer = null }
+    })
   } catch (err: any) {
     console.error('[download] ERROR:', err.message)
-    res.status(500).json({ error: err.message })
-  } finally {
     downloadRunning = false
+    if (downloadTimer) { clearTimeout(downloadTimer); downloadTimer = null }
+    res.status(500).json({ error: err.message })
   }
 })
 
