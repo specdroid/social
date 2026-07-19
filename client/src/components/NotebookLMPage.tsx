@@ -388,9 +388,11 @@ export function NotebookLMPage() {
                       { type: 'quiz', label: 'Quiz', icon: Zap },
                       { type: 'flashcards', label: 'Flashcards', icon: Layers },
                       { type: 'audio', label: 'Podcast', icon: Volume2 },
-                      { type: 'summary', label: 'Summary', icon: FileText },
-                      { type: 'slide-deck', label: 'Slides', icon: Layers },
                       { type: 'report', label: 'Report', icon: FileText },
+                      { type: 'slide-deck', label: 'Slides', icon: Layers },
+                      { type: 'infographic', label: 'Infographic', icon: FileText },
+                      { type: 'mind-map', label: 'Mind Map', icon: Brain },
+                      { type: 'data-table', label: 'Data Table', icon: FileText },
                     ].map(({ type, label, icon: Icon }) => (
                       <button key={type} onClick={() => generateArtifact(type)} className="flex flex-col items-center gap-2 p-4 bg-zinc-950 border border-zinc-800 rounded-xl hover:bg-zinc-800/50 transition-colors text-sm text-zinc-400 hover:text-zinc-200">
                         <Icon className="w-5 h-5" /> {label}
