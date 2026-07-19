@@ -158,8 +158,7 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
     const artId = String(req.params.artifactId)
     const nbId = String(req.params.id)
 
-    await sequential(nbId, ['use', nbId])
-    const artifact = await nlmJson(['artifact', 'get', artId, '--json'])
+    const artifact = await sequential(nbId, ['artifact', 'get', artId, '--json'], 60000)
     const artifactType = (artifact?.type_id || artifact?.type || 'report').replace(/_/g, '-')
     const artifactTitle = artifact?.title || artId
 
@@ -168,7 +167,7 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
     fs.mkdirSync(tmpDir, { recursive: true })
 
     const outputPath = `${tmpDir}/download`
-    await nlmRun(['download', artifactType, '--artifact', artId, outputPath], 300000)
+    await sequential(nbId, ['download', artifactType, '--artifact', artId, outputPath], 600000)
 
     const files = fs.readdirSync(tmpDir).filter((f: string) => !f.startsWith('.'))
     if (files.length === 0) {
@@ -188,6 +187,7 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
     res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream')
     res.sendFile(filePath, () => { fs.rmSync(tmpDir, { recursive: true, force: true }) })
   } catch (err: any) {
+    console.error('[notebooklm download]', err.message)
     res.status(500).json({ error: err.message })
   }
 })
