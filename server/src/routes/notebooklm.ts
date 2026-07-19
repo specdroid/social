@@ -248,8 +248,8 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
       html: 'text/html', txt: 'text/plain',
     }
     console.log(`[download] sending file ${downloadFile} ext=${ext} size=${fileSize}`)
-    res.setHeader('Content-Disposition', `attachment; filename="${artifactTitle}.${ext}"`)
-    res.sendFile(downloadFile, () => {
+    res.sendFile(downloadFile, (err) => {
+      if (err) console.error('[download] sendFile error:', err.message)
       fs.rmSync(tmpDir, { recursive: true, force: true })
       downloadRunning = false
       if (downloadTimer) { clearTimeout(downloadTimer); downloadTimer = null }
