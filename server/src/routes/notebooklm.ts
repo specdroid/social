@@ -188,8 +188,16 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
     const fs = require('fs')
     fs.mkdirSync(tmpDir, { recursive: true })
 
-    console.log(`[download] running: notebooklm download ${artifactType} --artifact ${artId} ${tmpDir}`)
-    const { stdout, stderr } = await nlmRunWithStderr(['download', artifactType, '--artifact', artId, tmpDir], 600000)
+    const extMap: Record<string, string> = {
+      'slide-deck': 'pdf', quiz: 'json', flashcards: 'json',
+      audio: 'mp3', report: 'md', infographic: 'png',
+      'mind-map': 'png', 'data-table': 'csv',
+    }
+    const fileExt = extMap[artifactType] || 'bin'
+    const outputPath = `${tmpDir}/artifact.${fileExt}`
+
+    console.log(`[download] running: notebooklm download ${artifactType} --artifact ${artId} ${outputPath}`)
+    const { stdout, stderr } = await nlmRunWithStderr(['download', artifactType, '--artifact', artId, outputPath], 600000)
     console.log(`[download] CLI stdout: ${stdout}`)
     console.log(`[download] CLI stderr: ${stderr}`)
 
