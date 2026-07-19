@@ -212,8 +212,10 @@ export function NotebookLMPage() {
     setDownloadProgress(0)
     try {
       const token = localStorage.getItem('token')
+      const controller = new AbortController()
       const res = await fetch(`${API_URL}/api/notebooklm/notebooks/${selectedNb.id}/artifacts/${artifactId}/download`, {
         headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal,
       })
       if (!res.ok) throw new Error('Download failed')
       const contentLength = res.headers.get('Content-Length')
@@ -237,7 +239,7 @@ export function NotebookLMPage() {
       const a = document.createElement('a')
       a.href = url; a.download = filename; a.click()
       URL.revokeObjectURL(url)
-    } catch (err) { showMsg('error', (err as Error).message) }
+    } catch (err) { if ((err as Error).name !== 'AbortError') showMsg('error', (err as Error).message) }
     setDownloadingId(null)
     setDownloadProgress(0)
   }
