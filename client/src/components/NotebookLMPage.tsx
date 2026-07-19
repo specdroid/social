@@ -268,7 +268,8 @@ export function NotebookLMPage() {
   }
 
   const timeAgo = (dateStr: string) => {
-    const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
+    const d = dateStr.endsWith('Z') || dateStr.includes('+') ? new Date(dateStr) : new Date(dateStr + 'Z')
+    const seconds = Math.floor((Date.now() - d.getTime()) / 1000)
     if (seconds < 60) return 'just now'
     const minutes = Math.floor(seconds / 60)
     if (minutes < 60) return `${minutes}m ago`
@@ -492,7 +493,6 @@ export function NotebookLMPage() {
                       { type: 'slide-deck', label: 'Slides', icon: Layers },
                       { type: 'infographic', label: 'Infographic', icon: FileText },
                       { type: 'mind-map', label: 'Mind Map', icon: Brain },
-                      { type: 'data-table', label: 'Data Table', icon: FileText },
                     ].map(({ type, label, icon: Icon }) => (
                       <button key={type} onClick={() => generateArtifact(type)} className="flex flex-col items-center gap-2 p-4 bg-zinc-950 border border-zinc-800 rounded-xl hover:bg-zinc-800/50 transition-colors text-sm text-zinc-400 hover:text-zinc-200">
                         <Icon className="w-5 h-5" /> {label}
