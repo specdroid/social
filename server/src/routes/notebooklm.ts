@@ -156,8 +156,11 @@ router.post('/notebooks/:id/artifacts', requireAuth, async (req: AuthRequest, re
 router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const artId = String(req.params.artifactId)
-    const artifact = await sequential(req.params.id, ['artifact', 'get', artId, '--json'])
-    const artifactType = (artifact?.type_id || artifact?.type || 'report').replace('-', '_').replace('slide_deck', 'slide-deck')
+    const nbId = String(req.params.id)
+
+    await sequential(nbId, ['use', nbId])
+    const artifact = await nlmJson(['artifact', 'get', artId, '--json'])
+    const artifactType = (artifact?.type_id || artifact?.type || 'report').replace(/_/g, '-')
     const artifactTitle = artifact?.title || artId
 
     const tmpDir = `/tmp/nlm-dl-${Date.now()}`
@@ -165,7 +168,7 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
     fs.mkdirSync(tmpDir, { recursive: true })
 
     const outputPath = `${tmpDir}/download`
-    await nlmRun(['download', artifactType, '--artifact', artId, outputPath], 120000)
+    await nlmRun(['download', artifactType, '--artifact', artId, outputPath], 300000)
 
     const files = fs.readdirSync(tmpDir).filter((f: string) => !f.startsWith('.'))
     if (files.length === 0) {
