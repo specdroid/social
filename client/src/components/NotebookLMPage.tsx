@@ -502,9 +502,23 @@ export function NotebookLMPage() {
                   {artifacts.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-zinc-500 uppercase">Generated</p>
-                      {artifacts.map(a => (
+                      {artifacts.map(a => {
+                        const typeLabels: Record<string, { label: string; color: string }> = {
+                          quiz: { label: 'Quiz', color: 'bg-purple-500/10 text-purple-400' },
+                          flashcards: { label: 'Flashcards', color: 'bg-blue-500/10 text-blue-400' },
+                          audio: { label: 'Podcast', color: 'bg-pink-500/10 text-pink-400' },
+                          report: { label: 'Report', color: 'bg-emerald-500/10 text-emerald-400' },
+                          'slide-deck': { label: 'Slides', color: 'bg-amber-500/10 text-amber-400' },
+                          infographic: { label: 'Infographic', color: 'bg-cyan-500/10 text-cyan-400' },
+                          'mind-map': { label: 'Mind Map', color: 'bg-indigo-500/10 text-indigo-400' },
+                          'data-table': { label: 'Data Table', color: 'bg-orange-500/10 text-orange-400' },
+                        }
+                        const artifactType = a.type_id || a.type || ''
+                        const typeInfo = typeLabels[artifactType]
+                        return (
                         <div key={a.id} className="flex items-center gap-2 px-3 py-2 bg-zinc-950 rounded-lg group">
-                          <span className="text-sm text-zinc-400 truncate">{a.title || a.type_id || a.type}</span>
+                          {typeInfo && <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${typeInfo.color}`}>{typeInfo.label}</span>}
+                          <span className="text-sm text-zinc-400 truncate">{a.title || artifactType}</span>
                           {a.created_at && <span className="text-xs text-zinc-600 shrink-0">{timeAgo(a.created_at)}</span>}
                           <span className={`ml-auto text-xs px-2 py-0.5 rounded-full shrink-0 ${a.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : a.status === 'processing' ? 'bg-amber-500/10 text-amber-400' : 'bg-zinc-800 text-zinc-500'}`}>
                             {a.status}
@@ -541,7 +555,8 @@ export function NotebookLMPage() {
                             </>
                           )}
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                   {artifacts.length === 0 && <p className="text-zinc-600 text-sm text-center py-8">No artifacts yet</p>}
