@@ -1780,8 +1780,8 @@ ${baseUrl}/facebook`,
           await sock.sendMessage(sender, { text: `💬 No chat history in *${nb.title}*.` })
         } else {
           const lines = last.map((p: any, i: number) => {
-            const q = (p.question || '').substring(0, 200)
-            const a = (p.answer || '').substring(0, 200)
+            const q = (p.question || '').substring(0, 1000)
+            const a = (p.answer || '').substring(0, 1000)
             return `*#${pairs.length - last.length + i + 1}*\n👤 ${q}\n🤖 ${a}`
           }).join('\n\n')
           await sock.sendMessage(sender, { text: `💬 *${nb.title}* (last ${last.length})\n\n${lines}` })
