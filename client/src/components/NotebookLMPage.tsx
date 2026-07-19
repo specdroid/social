@@ -223,6 +223,19 @@ export function NotebookLMPage() {
     } catch (err) { showMsg('error', (err as Error).message) }
   }
 
+  const timeAgo = (dateStr: string) => {
+    const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
+    if (seconds < 60) return 'just now'
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    if (days < 30) return `${days}d ago`
+    const months = Math.floor(days / 30)
+    return `${months}mo ago`
+  }
+
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chat])
 
   const sourceIcon = (type?: string) => {
@@ -425,7 +438,7 @@ export function NotebookLMPage() {
                       {artifacts.map(a => (
                         <div key={a.id} className="flex items-center gap-2 px-3 py-2 bg-zinc-950 rounded-lg group">
                           <span className="text-sm text-zinc-400 truncate">{a.title || a.type_id || a.type}</span>
-                          {a.created_at && <span className="text-xs text-zinc-600 shrink-0">{new Date(a.created_at).toLocaleDateString()}</span>}
+                          {a.created_at && <span className="text-xs text-zinc-600 shrink-0">{timeAgo(a.created_at)}</span>}
                           <span className={`ml-auto text-xs px-2 py-0.5 rounded-full shrink-0 ${a.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : a.status === 'processing' ? 'bg-amber-500/10 text-amber-400' : 'bg-zinc-800 text-zinc-500'}`}>
                             {a.status}
                           </span>
