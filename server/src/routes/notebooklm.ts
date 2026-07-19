@@ -240,10 +240,14 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
       csv: 'text/csv', json: 'application/json', png: 'image/png',
       jpg: 'image/jpeg', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     }
-    console.log(`[download] sending file ${downloadFile} ext=${ext}`)
+    console.log(`[download] sending file ${downloadFile} ext=${ext} size=${fileSize}`)
     res.setHeader('Content-Disposition', `attachment; filename="${artifactTitle}.${ext}"`)
     res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream')
-    res.sendFile(downloadFile, () => { fs.rmSync(tmpDir, { recursive: true, force: true }) })
+    res.setHeader('Content-Length', fileSize)
+    const stream = fs.createReadStream(downloadFile)
+    stream.pipe(res)
+    stream.on('end', () => { fs.rmSync(tmpDir, { recursive: true, force: true }) })
+    stream.on('error', (e: Error) => { console.error('[download] stream error:', e.message); fs.rmSync(tmpDir, { recursive: true, force: true }); res.end() })
   } catch (err: any) {
     console.error('[download] ERROR:', err.message)
     res.status(500).json({ error: err.message })
