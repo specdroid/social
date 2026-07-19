@@ -8,6 +8,7 @@ const router = Router()
 const NLM_BIN = process.env.NOTEBOOKLM_BIN || 'notebooklm'
 
 let nlmQueue: Promise<any> = Promise.resolve()
+let downloadRunning = false
 
 function nlmRun(args: string[], timeout = 30000): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -154,24 +155,39 @@ router.post('/notebooks/:id/artifacts', requireAuth, async (req: AuthRequest, re
 })
 
 router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const artId = String(req.params.artifactId)
-    const nbId = String(req.params.id)
+  const artId = String(req.params.artifactId)
+  const nbId = String(req.params.id)
+  console.log(`[download] START artifact=${artId} notebook=${nbId}`)
 
-    const artifact = await sequential(nbId, ['artifact', 'get', artId, '--json'], 60000)
+  if (downloadRunning) {
+    console.log('[download] Another download in progress, returning 429')
+    res.status(429).json({ error: 'Another download is in progress, please wait' })
+    return
+  }
+  downloadRunning = true
+
+  try {
+    await nlmRun(['use', nbId], 60000)
+    console.log('[download] use done')
+
+    const artifact = await nlmJson(['artifact', 'get', artId, '--json'], 60000)
     const artifactType = (artifact?.type_id || artifact?.type || 'report').replace(/_/g, '-')
     const artifactTitle = artifact?.title || artId
+    console.log(`[download] artifact type=${artifactType} title=${artifactTitle}`)
 
     const tmpDir = `/tmp/nlm-dl-${Date.now()}`
     const fs = require('fs')
     fs.mkdirSync(tmpDir, { recursive: true })
 
     const outputPath = `${tmpDir}/download`
-    await sequential(nbId, ['download', artifactType, '--artifact', artId, outputPath], 600000)
+    console.log(`[download] running CLI download ${artifactType} --artifact ${artId} ${outputPath}`)
+    await nlmRun(['download', artifactType, '--artifact', artId, outputPath], 600000)
+    console.log('[download] CLI download done')
 
     const files = fs.readdirSync(tmpDir).filter((f: string) => !f.startsWith('.'))
     if (files.length === 0) {
       fs.rmSync(tmpDir, { recursive: true, force: true })
+      console.log('[download] No files found in tmp dir')
       res.status(404).json({ error: 'No file downloaded' })
       return
     }
@@ -183,12 +199,15 @@ router.get('/notebooks/:id/artifacts/:artifactId/download', requireAuth, async (
       csv: 'text/csv', json: 'application/json', png: 'image/png',
       jpg: 'image/jpeg', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     }
+    console.log(`[download] sending file ${filePath} (${ext})`)
     res.setHeader('Content-Disposition', `attachment; filename="${artifactTitle}.${ext}"`)
     res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream')
     res.sendFile(filePath, () => { fs.rmSync(tmpDir, { recursive: true, force: true }) })
   } catch (err: any) {
-    console.error('[notebooklm download]', err.message)
+    console.error('[download] ERROR:', err.message)
     res.status(500).json({ error: err.message })
+  } finally {
+    downloadRunning = false
   }
 })
 
