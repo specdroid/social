@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
-import { Brain, Send, Check, X, Eye, EyeOff, Loader2, MessageSquare, Plus, Trash2, Key } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { Brain, Send, Check, X, Eye, EyeOff, Loader2, MessageSquare, Plus, Trash2, Key, Paperclip } from 'lucide-react'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
 import { useApi } from '../hooks/useApi'
 
 interface Config {
@@ -20,6 +22,42 @@ interface ApiKeyEntry {
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  attachment?: { name: string; type: string; size: number }
+}
+
+function renderMathInText(text: string): string {
+  let result = text
+  result = result.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+    try { return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false }) }
+    catch { return `<code>${math}</code>` }
+  })
+  result = result.replace(/\$([^\n$]+?)\$/g, (_, math) => {
+    try { return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false }) }
+    catch { return `<code>${math}</code>` }
+  })
+  return result
+}
+
+function MessageContent({ content }: { content: string }) {
+  const html = useMemo(() => renderMathInText(content), [content])
+  const hasMath = html.includes('katex')
+  if (!hasMath) return <span className="whitespace-pre-wrap">{content}</span>
+  return <span className="prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: html }} />
+}
+
+function fileIcon(mime: string) {
+  if (mime.startsWith('image/')) return '🖼'
+  if (mime.startsWith('video/')) return '🎬'
+  if (mime.startsWith('audio/')) return '🎵'
+  if (mime.includes('pdf')) return '📄'
+  if (mime.includes('zip') || mime.includes('compressed')) return '📦'
+  return '📎'
+}
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export function OmniroutePanel() {
@@ -44,7 +82,9 @@ export function OmniroutePanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [pendingFile, setPendingFile] = useState<{ name: string; type: string; size: number; base64: string } | null>(null)
   const chatEnd = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadConfig()
@@ -138,22 +178,57 @@ export function OmniroutePanel() {
     }
   }
 
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(',')[1] || ''
+      setPendingFile({ name: file.name, type: file.type, size: file.size, base64 })
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  function removePendingFile() {
+    setPendingFile(null)
+  }
+
   async function handleSend() {
-    if (!chatInput.trim() || sending) return
-    const userMsg: ChatMessage = { role: 'user', content: chatInput.trim() }
+    const text = chatInput.trim()
+    if ((!text && !pendingFile) || sending) return
+
+    let content = text
+    let attachment: ChatMessage['attachment'] = undefined
+
+    if (pendingFile) {
+      if (text) {
+        content = `${text}\n\n[Attached: ${pendingFile.name} (${formatSize(pendingFile.size)})]`
+      } else {
+        content = `[Attached: ${pendingFile.name} (${formatSize(pendingFile.size)})]`
+      }
+      attachment = { name: pendingFile.name, type: pendingFile.type, size: pendingFile.size }
+    }
+
+    const userMsg: ChatMessage = { role: 'user', content, attachment }
     setMessages(prev => [...prev, userMsg])
     setChatInput('')
+    setPendingFile(null)
     setSending(true)
+
     try {
-      const data = await post<{ reply: string }>('/api/omniroute/chat', {
-        messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
-      })
+      const apiMessages = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
+      const data = await post<{ reply: string }>('/api/omniroute/chat', { messages: apiMessages })
       if (data) setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
     } catch (e: any) {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${e.message}` }])
     } finally {
       setSending(false)
     }
+  }
+
+  function handleRemoveMessage(index: number) {
+    setMessages(prev => prev.filter((_, i) => i !== index))
   }
 
   return (
@@ -326,16 +401,32 @@ export function OmniroutePanel() {
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-4">
         <h3 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">Chat</h3>
 
-        <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 h-80 overflow-y-auto space-y-3">
+        <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 h-96 overflow-y-auto space-y-3">
           {messages.length === 0 && (
             <p className="text-zinc-600 text-sm text-center pt-8">Send a message to start chatting with the AI</p>
           )}
           {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap ${
+            <div key={i} className={`group flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`relative max-w-[80%] px-3 py-2 rounded-lg text-sm ${
                 msg.role === 'user' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-200'
               }`}>
-                {msg.content}
+                {msg.attachment && (
+                  <div className={`flex items-center gap-2 mb-1.5 px-2 py-1 rounded text-xs ${
+                    msg.role === 'user' ? 'bg-purple-700/50' : 'bg-zinc-700/50'
+                  }`}>
+                    <span>{fileIcon(msg.attachment.type)}</span>
+                    <span className="truncate max-w-[150px]">{msg.attachment.name}</span>
+                    <span className="opacity-60">{formatSize(msg.attachment.size)}</span>
+                  </div>
+                )}
+                <MessageContent content={msg.content} />
+                <button
+                  onClick={() => handleRemoveMessage(i)}
+                  className="absolute -top-2 -right-2 w-5 h-5 bg-zinc-700 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Remove message"
+                >
+                  <X className="w-3 h-3 text-zinc-300" />
+                </button>
               </div>
             </div>
           ))}
@@ -349,7 +440,33 @@ export function OmniroutePanel() {
           <div ref={chatEnd} />
         </div>
 
+        {pendingFile && (
+          <div className="flex items-center gap-2 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2">
+            <span>{fileIcon(pendingFile.type)}</span>
+            <span className="text-sm text-zinc-300 truncate flex-1">{pendingFile.name}</span>
+            <span className="text-xs text-zinc-500">{formatSize(pendingFile.size)}</span>
+            <button onClick={removePendingFile} className="p-1 text-zinc-400 hover:text-red-400 rounded transition-colors">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         <div className="flex gap-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            className="hidden"
+            accept="*/*"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending}
+            className="px-3 py-2 bg-zinc-800 text-zinc-400 rounded-lg hover:bg-zinc-700 hover:text-zinc-200 transition-colors disabled:opacity-50"
+            title="Attach file"
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
           <input
             type="text"
             value={chatInput}
@@ -360,7 +477,7 @@ export function OmniroutePanel() {
           />
           <button
             onClick={handleSend}
-            disabled={!chatInput.trim() || sending || !config?.hasApiKey}
+            disabled={(!chatInput.trim() && !pendingFile) || sending || !config?.hasApiKey}
             className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors disabled:opacity-50"
           >
             <Send className="w-4 h-4" />
