@@ -2,7 +2,10 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { Brain, Send, Check, X, Eye, EyeOff, Loader2, MessageSquare, Plus, Trash2, Key, Paperclip } from 'lucide-react'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
+import * as pdfjsLib from 'pdfjs-dist'
 import { useApi } from '../hooks/useApi'
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 
 interface Config {
   baseUrl: string
@@ -194,6 +197,26 @@ export function OmniroutePanel() {
     setPendingFile(null)
   }
 
+  async function pdfToImages(base64: string): Promise<string[]> {
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
+    const images: string[] = []
+    const maxPages = Math.min(pdf.numPages, 10)
+    for (let i = 1; i <= maxPages; i++) {
+      const page = await pdf.getPage(i)
+      const viewport = page.getViewport({ scale: 1.5 })
+      const canvas = document.createElement('canvas')
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+      const ctx = canvas.getContext('2d')!
+      await page.render({ canvasContext: ctx, viewport }).promise
+      images.push(canvas.toDataURL('image/png').split(',')[1])
+    }
+    return images
+  }
+
   async function handleSend() {
     const text = chatInput.trim()
     if ((!text && !pendingFile) || sending) return
@@ -202,10 +225,22 @@ export function OmniroutePanel() {
     let attachment: ChatMessage['attachment'] = undefined
 
     if (pendingFile) {
-      if (pendingFile.type.startsWith('image/')) {
+      const isImage = pendingFile.type.startsWith('image/')
+      const isPdf = pendingFile.type === 'application/pdf'
+
+      if (isImage) {
         const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = []
         if (text) contentParts.push({ type: 'text', text })
         contentParts.push({ type: 'image_url', image_url: { url: `data:${pendingFile.type};base64,${pendingFile.base64}` } })
+        content = contentParts
+      } else if (isPdf) {
+        const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = []
+        if (text) contentParts.push({ type: 'text', text: `${text}\n\n[PDF: ${pendingFile.name} — ${await pdfPageCount(pendingFile.base64)} pages]` })
+        else contentParts.push({ type: 'text', text: `[PDF: ${pendingFile.name} — ${await pdfPageCount(pendingFile.base64)} pages. Pages shown as images below.]` })
+        const images = await pdfToImages(pendingFile.base64)
+        for (const img of images) {
+          contentParts.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${img}` } })
+        }
         content = contentParts
       } else {
         content = text
@@ -233,6 +268,16 @@ export function OmniroutePanel() {
     } finally {
       setSending(false)
     }
+  }
+
+  async function pdfPageCount(base64: string): Promise<number> {
+    try {
+      const binary = atob(base64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
+      return pdf.numPages
+    } catch { return 0 }
   }
 
   function handleRemoveMessage(index: number) {
