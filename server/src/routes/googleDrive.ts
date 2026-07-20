@@ -326,8 +326,15 @@ router.post('/drive/:driveId/upload', requireAuth, async (req: AuthRequest, res:
   }
 })
 
-// ── Download file from a drive ──
-router.get('/drive/:driveId/download/:fileId', requireAuth, async (req: AuthRequest, res: Response) => {
+// ── Download file from a drive (accepts token via query param for browser downloads) ──
+router.get('/drive/:driveId/download/:fileId', async (req: AuthRequest, res: Response) => {
+  const token = (req.query.token as string) || (req.headers.authorization?.replace('Bearer ', '') || '')
+  if (!token) { res.status(401).json({ error: 'Authentication required' }); return }
+  try {
+    const jwt = require('jsonwebtoken')
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string }
+    req.userId = decoded.userId
+  } catch { res.status(401).json({ error: 'Invalid token' }); return }
   try {
     const drive = await prisma.googleDrive.findFirst({ where: { id: String(req.params.driveId), userId: req.userId! } })
     if (!drive) { res.status(404).json({ error: 'Drive not found' }); return }
