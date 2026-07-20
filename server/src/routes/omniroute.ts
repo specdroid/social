@@ -2,17 +2,19 @@ import { Router, Response } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import { AppError } from '../middleware/errorHandler'
-import { getConfig, updateConfig, chatCompletion } from '../services/omniroute'
+import { getConfig, updateConfig, chatCompletion, getApiKeys, addApiKey, deleteApiKey } from '../services/omniroute'
 
 const router = Router()
 
 router.get('/config', requireAuth, async (req: AuthRequest, res: Response) => {
   const config = await getConfig(req.userId!)
+  const keys = await getApiKeys(req.userId!)
   res.json({
     baseUrl: config.baseUrl,
-    hasApiKey: !!config.apiKey,
+    hasApiKey: !!config.apiKey || keys.length > 0,
     model: config.model,
     systemPrompt: config.systemPrompt,
+    apiKeyCount: keys.length + (config.apiKey ? 1 : 0),
   })
 })
 
@@ -32,12 +34,31 @@ router.put('/config', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 
   const config = await updateConfig(req.userId!, { baseUrl, apiKey, model, systemPrompt })
+  const keys = await getApiKeys(req.userId!)
   res.json({
     baseUrl: config.baseUrl,
-    hasApiKey: !!config.apiKey,
+    hasApiKey: !!config.apiKey || keys.length > 0,
     model: config.model,
     systemPrompt: config.systemPrompt,
+    apiKeyCount: keys.length + (config.apiKey ? 1 : 0),
   })
+})
+
+router.get('/keys', requireAuth, async (req: AuthRequest, res: Response) => {
+  const keys = await getApiKeys(req.userId!)
+  res.json({ keys: keys.map(k => ({ id: k.id, label: k.label, key: k.key.slice(0, 8) + '...' + k.key.slice(-4), createdAt: k.createdAt })) })
+})
+
+router.post('/keys', requireAuth, async (req: AuthRequest, res: Response) => {
+  const { key, label } = req.body
+  if (!key || typeof key !== 'string') throw new AppError(400, 'key is required')
+  const created = await addApiKey(req.userId!, key.trim(), label)
+  res.json({ id: created.id, label: created.label, key: created.key.slice(0, 8) + '...' + created.key.slice(-4), createdAt: created.createdAt })
+})
+
+router.delete('/keys/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+  await deleteApiKey(req.params.id, req.userId!)
+  res.json({ ok: true })
 })
 
 router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
@@ -57,8 +78,9 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
 
 router.get('/status', requireAuth, async (req: AuthRequest, res: Response) => {
   const config = await getConfig(req.userId!)
-  if (!config.apiKey) {
-    res.json({ ok: false, error: 'API key not configured' })
+  const keys = await getApiKeys(req.userId!)
+  if (!config.apiKey && keys.length === 0) {
+    res.json({ ok: false, error: 'No API keys configured' })
     return
   }
 

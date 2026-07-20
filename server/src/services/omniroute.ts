@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
+let keyIndex = 0
+
 export async function getConfig(userId: string) {
   let config = await prisma.omnirouteConfig.findFirst({ where: { userId } })
   if (!config) {
@@ -23,9 +25,40 @@ export async function updateConfig(userId: string, data: { baseUrl?: string; api
   })
 }
 
+export async function getApiKeys(userId: string) {
+  return prisma.omnirouteApiKey.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } })
+}
+
+export async function addApiKey(userId: string, key: string, label?: string) {
+  return prisma.omnirouteApiKey.create({ data: { userId, key, label: label || '' } })
+}
+
+export async function deleteApiKey(id: string, userId: string) {
+  return prisma.omnirouteApiKey.deleteMany({ where: { id, userId } })
+}
+
+function getNextKey(keys: string[]): string {
+  if (keys.length === 0) throw new Error('No API keys configured')
+  const key = keys[keyIndex % keys.length]
+  keyIndex++
+  return key
+}
+
 export async function chatCompletion(messages: { role: string; content: string }[], userId?: string) {
   const config = userId ? await getConfig(userId) : await prisma.omnirouteConfig.findFirst()
-  if (!config || !config.apiKey) throw new Error('Omniroute API key not configured')
+  if (!config) throw new Error('Omniroute not configured')
+
+  let apiKey = config.apiKey
+
+  const extraKeys = userId
+    ? (await prisma.omnirouteApiKey.findMany({ where: { userId } })).map(k => k.key)
+    : []
+
+  const allKeys = [apiKey, ...extraKeys].filter(k => k && k.trim())
+
+  if (allKeys.length === 0) throw new Error('No API keys configured')
+
+  const key = getNextKey(allKeys)
 
   const body: any = {
     model: config.model || 'auto/coding:free',
@@ -42,7 +75,7 @@ export async function chatCompletion(messages: { role: string; content: string }
   const response = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${config.apiKey}`,
+      'Authorization': `Bearer ${key}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),

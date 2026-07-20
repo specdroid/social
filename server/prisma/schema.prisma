@@ -39,6 +39,7 @@ model User {
   sessions             Session[]
   facebookPostLogs     FacebookPostLog[]
   omnirouteConfigs     OmnirouteConfig[]
+  omnirouteApiKeys      OmnirouteApiKey[]
   telegramSessions     TelegramSession[]
   telegramContacts     TelegramContact[]
   telegramConversations TelegramConversation[]
@@ -215,6 +216,17 @@ model OmnirouteConfig {
   updatedAt    DateTime @updatedAt
 
   @@unique([userId])
+}
+
+model OmnirouteApiKey {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  label     String   @default("")
+  key       String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, key])
 }
 
 model TelegramSession {
