@@ -23,7 +23,6 @@ const navItems = [
   { path: '/whatsapp', label: 'WhatsApp', icon: MessageSquare },
   { path: '/telegram', label: 'Telegram', icon: TelegramIcon },
   { path: '/facebook', label: 'Facebook', icon: Facebook },
-  { path: '/notebooklm', label: 'NotebookLM', icon: Brain },
   { path: '/google-drive', label: 'Google Drive', icon: HardDrive },
   { path: '/omniroute', label: 'Omniroute', icon: Brain },
 ]

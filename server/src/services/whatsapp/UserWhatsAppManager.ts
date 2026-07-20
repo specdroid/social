@@ -11,7 +11,6 @@ import { PrismaClient } from '@prisma/client'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
-import { execFile } from 'child_process'
 import QRCode from 'qrcode'
 import { SocksProxyAgent } from 'socks-proxy-agent'
 import { log } from '../../utils/logger'
@@ -30,35 +29,6 @@ const MIN_THROTTLE_MS = 30000
 const MIN_FOLLOWUP_THROTTLE_MS = 5000
 const MAX_GLOBAL_PER_MIN = 15
 const MAX_GLOBAL_PER_HOUR = 60
-
-const NLM_BIN = process.env.NOTEBOOKLM_BIN || 'notebooklm'
-let nlmQueue: Promise<any> = Promise.resolve()
-function nlmRun(args: string[], timeout = 30000): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(NLM_BIN, args, { timeout }, (err, stdout, stderr) => {
-      if (err) reject(new Error(stderr || err.message))
-      else resolve(stdout.trim())
-    })
-  })
-}
-function nlmJson(args: string[], timeout = 30000): Promise<any> {
-  return nlmRun(args, timeout).then(out => { try { return JSON.parse(out) } catch { return out } })
-}
-function nlmSeq(notebookId: string | null, cmd: string[], timeout = 30000): Promise<any> {
-  const id = notebookId
-  const run = async () => {
-    if (id) await nlmRun(['use', id], timeout)
-    return nlmJson(cmd, timeout)
-  }
-  nlmQueue = nlmQueue.then(run, run)
-  return nlmQueue
-}
-async function nlmFindNotebooks(query: string): Promise<Array<{ id: string; title: string; index: number }>> {
-  const data = await nlmSeq(null, ['list', '--json'])
-  const nbs = data?.notebooks || []
-  const q = query.toLowerCase()
-  return nbs.filter((nb: any) => (nb.title || '').toLowerCase().includes(q))
-}
 
 export class UserWhatsAppManager {
   readonly userId: string
@@ -1013,98 +983,6 @@ export class UserWhatsAppManager {
     // ── ws help ──
     if (/^ws\s+(help|-h)$/i.test(textContent.trim())) {
       await sock.sendMessage(sender, { text: '🔹 ws get groups\n🔹 ws get rules\n🔹 ws create rule <name>\n🔹 ws delete rule <name>\n🔹 ws create <name> save <gr1, gr2>\n🔹 ws delete list <name>\n🔹 ws list <name>: <content>\n🔹 ws <gr1, gr2>: <content>\n🔹 ws test <rule>: <trigger>\n🔹 ws ai: <prompt>\n🔹 ws verify telegram: <code>\n🔹 tel get channels\n🔹 tel <channel>: <content>' })
-      return true
-    }
-
-    // ── ws notebooks ──
-    if (/^ws\s+notebooks$/i.test(textContent.trim())) {
-      try {
-        const data = await nlmSeq(null, ['list', '--json'])
-        const nbs = data?.notebooks || []
-        if (nbs.length === 0) {
-          await sock.sendMessage(sender, { text: '📚 No notebooks found.' })
-        } else {
-          const lines = nbs.map((nb: any, i: number) => `${i + 1}. *${nb.title}*`).join('\n')
-          await sock.sendMessage(sender, { text: `📚 *Notebooks*\n\n${lines}` })
-        }
-      } catch (err: any) {
-        await sock.sendMessage(sender, { text: `❌ Error listing notebooks: ${err.message}` })
-      }
-      return true
-    }
-
-    // ── ws notebook <name> chat [limit] ──
-    const nbChatMatch = textContent.match(/^ws\s+notebook\s+(.+?)\s+chat(?:\s+(\d+))?$/i)
-    if (nbChatMatch) {
-      const query = nbChatMatch[1].trim()
-      const limit = parseInt(nbChatMatch[2] || '10', 10)
-      try {
-        const matches = await nlmFindNotebooks(query)
-        if (matches.length === 0) {
-          await sock.sendMessage(sender, { text: `❌ No notebooks matching "${query}" found.` })
-        } else if (matches.length > 1) {
-          const list = matches.map((nb, i) => `${i + 1}. *${nb.title}*`).join('\n')
-          await sock.sendMessage(sender, { text: `🔍 Multiple notebooks match "${query}":\n\n${list}\n\n_Reply with:_ ws notebook <exact name> chat ${limit}` })
-        } else {
-          const nb = matches[0]
-          const histData = await nlmSeq(nb.id, ['history', '--json', '--show-all'], 60000)
-          const pairs = histData?.qa_pairs || []
-          const last = pairs.slice(-limit)
-          if (last.length === 0) {
-            await sock.sendMessage(sender, { text: `💬 No chat history in *${nb.title}*.` })
-          } else {
-            const lines = last.map((p: any, i: number) => {
-              const q = (p.question || '')
-              const a = (p.answer || '')
-              return `#${pairs.length - last.length + i + 1}\nQ: ${q}\nA: ${a}`
-            }).join('\n\n')
-            const fullText = `Chat History — ${nb.title} (last ${last.length})\n\n${lines}`
-            if (fullText.length > 3000) {
-              const tmpFile = path.join(os.tmpdir(), `chat_${nb.id.slice(0, 8)}_${Date.now()}.txt`)
-              fs.writeFileSync(tmpFile, fullText)
-              await sock.sendMessage(sender, {
-                document: fs.readFileSync(tmpFile),
-                fileName: `${nb.title.slice(0, 50)}_chat.txt`,
-                mimetype: 'text/plain',
-              })
-              fs.unlinkSync(tmpFile)
-            } else {
-              await sock.sendMessage(sender, { text: `💬 *${nb.title}* (last ${last.length})\n\n${lines}` })
-            }
-          }
-        }
-      } catch (err: any) {
-        await sock.sendMessage(sender, { text: `❌ Error: ${err.message}` })
-      }
-      return true
-    }
-
-    // ── ws notebook <name> quizes ──
-    const nbQuizMatch = textContent.match(/^ws\s+notebook\s+(.+?)\s+quizes?$/i)
-    if (nbQuizMatch) {
-      const query = nbQuizMatch[1].trim()
-      try {
-        const matches = await nlmFindNotebooks(query)
-        if (matches.length === 0) {
-          await sock.sendMessage(sender, { text: `❌ No notebooks matching "${query}" found.` })
-        } else if (matches.length > 1) {
-          const list = matches.map((nb, i) => `${i + 1}. *${nb.title}*`).join('\n')
-          await sock.sendMessage(sender, { text: `🔍 Multiple notebooks match "${query}":\n\n${list}\n\n_Reply with:_ ws notebook <exact name> quizes` })
-        } else {
-          const nb = matches[0]
-          const artData = await nlmSeq(nb.id, ['artifact', 'list', '--json'])
-          const raw = Array.isArray(artData) ? artData : (artData?.artifacts || [])
-          const quizes = raw.filter((a: any) => (a.type_id || a.type || '').replace(/_/g, '-').includes('quiz'))
-          if (quizes.length === 0) {
-            await sock.sendMessage(sender, { text: `📝 No quizzes found in *${nb.title}*.` })
-          } else {
-            const lines = quizes.map((a: any, i: number) => `${i + 1}. *${a.title || a.id || 'Untitled'}*`).join('\n')
-            await sock.sendMessage(sender, { text: `📝 *Quizzes in ${nb.title}*\n\n${lines}` })
-          }
-        }
-      } catch (err: any) {
-        await sock.sendMessage(sender, { text: `❌ Error: ${err.message}` })
-      }
       return true
     }
 
