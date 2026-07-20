@@ -109,6 +109,30 @@ function DeleteDialog({ open, fileName, onConfirm, onCancel }: { open: boolean; 
   )
 }
 
+function SuccessDialog({ open, message, onClose }: { open: boolean; message: string; onClose: () => void }) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+            <Check className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-100">Success</h3>
+            <p className="text-xs text-zinc-400 mt-0.5">{message}</p>
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-zinc-900 bg-zinc-50 hover:bg-zinc-200 rounded-lg transition-colors">
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ShareDialog({ open, shareUrl, fileName, onClose }: { open: boolean; shareUrl: string; fileName: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false)
   if (!open) return null
@@ -176,6 +200,7 @@ export function GoogleDrivePage() {
 
   const [shareTarget, setShareTarget] = useState<DriveFile | null>(null)
   const [shareUrl, setShareUrl] = useState('')
+  const [deleteSuccess, setDeleteSuccess] = useState('')
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -351,7 +376,7 @@ export function GoogleDrivePage() {
         throw new Error(err.error || 'Delete failed')
       }
       setFiles(f => f.filter(file => file.id !== deleteTarget.id))
-      setMsg({ type: 'success', text: 'File deleted' })
+      setDeleteSuccess(`"${deleteTarget.name}" deleted successfully`)
     } catch {
       setMsg({ type: 'error', text: 'Delete failed' })
     }
@@ -584,6 +609,7 @@ export function GoogleDrivePage() {
       )}
 
       <DeleteDialog open={!!deleteTarget} fileName={deleteTarget?.name || ''} onConfirm={handleDeleteFile} onCancel={() => setDeleteTarget(null)} />
+      <SuccessDialog open={!!deleteSuccess} message={deleteSuccess} onClose={() => setDeleteSuccess('')} />
       <ShareDialog open={!!shareTarget} shareUrl={shareUrl} fileName={shareTarget?.name || ''} onClose={() => { setShareTarget(null); setShareUrl('') }} />
     </div>
   )
