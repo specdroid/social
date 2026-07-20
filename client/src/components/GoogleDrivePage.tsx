@@ -340,8 +340,16 @@ export function GoogleDrivePage() {
 
   const handleDeleteFile = async () => {
     if (!selectedDrive || !deleteTarget) return
+    const token = localStorage.getItem('token')
     try {
-      await post(`/api/google/drive/${selectedDrive.id}/delete/${deleteTarget.id}`)
+      const res = await fetch(`${API_URL}/api/google/drive/${selectedDrive.id}/file/${deleteTarget.id}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Delete failed' }))
+        throw new Error(err.error || 'Delete failed')
+      }
       setFiles(f => f.filter(file => file.id !== deleteTarget.id))
       setMsg({ type: 'success', text: 'File deleted' })
     } catch {
