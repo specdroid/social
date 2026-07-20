@@ -20,12 +20,11 @@ import { TelegramIcon } from './icons/TelegramIcon'
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/automation', label: 'Automation', icon: GitBranch },
-  { path: '/facebook', label: 'Facebook', icon: Facebook },
   { path: '/whatsapp', label: 'WhatsApp', icon: MessageSquare },
   { path: '/telegram', label: 'Telegram', icon: TelegramIcon },
-  { path: '/google-drive', label: 'Google Drive', icon: HardDrive },
+  { path: '/facebook', label: 'Facebook', icon: Facebook },
   { path: '/notebooklm', label: 'NotebookLM', icon: Brain },
-  { path: '/billing', label: 'Billing', icon: CreditCard },
+  { path: '/google-drive', label: 'Google Drive', icon: HardDrive },
   { path: '/omniroute', label: 'Omniroute', icon: Brain },
 ]
 
@@ -100,6 +99,17 @@ export function Layout({ children, onLogout, userRole }: { children: ReactNode; 
         })}
       </nav>
       <div className="px-3 space-y-1 border-t border-zinc-800 pt-3">
+        <button
+          onClick={() => handleNav('/billing')}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+            location.pathname === '/billing'
+              ? 'bg-zinc-800 text-zinc-50'
+              : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800/50'
+          }`}
+        >
+          <CreditCard className="w-4 h-4" />
+          Billing
+        </button>
         <button
           onClick={() => handleNav('/help')}
           className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
