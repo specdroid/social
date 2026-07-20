@@ -340,18 +340,22 @@ router.get('/drive/:driveId/download/:fileId', async (req: AuthRequest, res: Res
     if (!drive) { res.status(404).json({ error: 'Drive not found' }); return }
 
     const accessToken = await getAccessToken(drive.id)
+    const fileId = String(req.params.fileId)
 
-    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${req.params.fileId}?fields=name,mimeType,size`, {
+    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,mimeType,size&supportsAllDrives=true`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
     const meta: any = await metaRes.json()
-    if (meta.error) throw new Error(meta.error.message)
+    if (meta.error) throw new Error(meta.error.message || JSON.stringify(meta.error))
 
-    const result = await fetch(`https://www.googleapis.com/drive/v3/files/${req.params.fileId}?alt=media`, {
+    const result = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
 
-    if (!result.ok) throw new Error(`Download failed: ${result.statusText}`)
+    if (!result.ok) {
+      const errBody = await result.text().catch(() => '')
+      throw new Error(`Download failed: ${result.status} ${result.statusText} ${errBody}`)
+    }
 
     const contentType = result.headers.get('content-type') || 'application/octet-stream'
     const contentDisp = `attachment; filename="${(meta.name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_')}"`
