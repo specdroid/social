@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 const REQUEST_TIMEOUT = 120000
+const AI_TIMEOUT = 300000
 
 function getToken(): string | null {
   return localStorage.getItem('token')
@@ -9,7 +10,8 @@ function getToken(): string | null {
 
 async function request<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  timeoutMs: number = REQUEST_TIMEOUT
 ): Promise<T> {
   const token = getToken()
   const headers: Record<string, string> = {
@@ -22,7 +24,7 @@ async function request<T>(
   }
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
     const response = await fetch(`${API_URL}${endpoint}`, {
@@ -75,6 +77,26 @@ export function useApi() {
     } catch (err) {
       const message = (err as Error).name === 'AbortError'
         ? 'Request timed out'
+        : (err as Error).message
+      setError(message)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const postAi = useCallback(async <T>(endpoint: string, body?: unknown): Promise<T> => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await request<T>(endpoint, {
+        method: 'POST',
+        body: body ? JSON.stringify(body) : undefined,
+      }, AI_TIMEOUT)
+      return data
+    } catch (err) {
+      const message = (err as Error).name === 'AbortError'
+        ? 'AI request timed out (5 min limit)'
         : (err as Error).message
       setError(message)
       throw err
@@ -145,5 +167,5 @@ export function useApi() {
     }
   }, [])
 
-  return { get, post, put, patch, del, loading, error }
+  return { get, post, postAi, put, patch, del, loading, error }
 }

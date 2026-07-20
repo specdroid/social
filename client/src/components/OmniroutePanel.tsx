@@ -64,7 +64,7 @@ function formatSize(bytes: number) {
 }
 
 export function OmniroutePanel() {
-  const { get, post, put } = useApi()
+  const { get, post, postAi, put } = useApi()
   const [config, setConfig] = useState<Config | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -261,7 +261,7 @@ export function OmniroutePanel() {
       if (pendingFile && typeof content !== 'string') {
         apiMessages[apiMessages.length - 1].content = content
       }
-      const data = await post<{ reply: string }>('/api/omniroute/chat', { messages: apiMessages })
+      const data = await postAi<{ reply: string }>('/api/omniroute/chat', { messages: apiMessages })
       if (data) setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
     } catch (e: any) {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${e.message}` }])
