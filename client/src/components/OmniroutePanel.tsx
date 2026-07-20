@@ -29,7 +29,7 @@ export function OmniroutePanel() {
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('auto/coding:free')
   const [systemPrompt, setSystemPrompt] = useState('')
-  const [showKey, setShowKey] = useState(false)
+  const [showNewKeyInput, setShowNewKeyInput] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [testStatus, setTestStatus] = useState<{ ok: boolean; reply?: string; error?: string; msg?: string } | null>(null)
@@ -137,15 +137,6 @@ export function OmniroutePanel() {
       setSaveMsg({ ok: false, text: e.message || 'Failed to delete' })
       setTimeout(() => setSaveMsg(null), 3000)
     }
-  }
-
-  async function handleDeleteAllKeys() {
-    for (const k of apiKeys) {
-      await fetch(`/api/omniroute/keys/${k.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
-    }
-    setDeleteTarget(null)
-    loadKeys()
-    loadConfig()
   }
 
   async function handleSend() {
