@@ -404,7 +404,7 @@ router.post('/drive/:driveId/file/:fileId/share', requireAuth, async (req: AuthR
       throw new Error(err.error?.message || 'Failed to fetch file link')
     }
 
-    const fileData = await fileResult.json()
+    const fileData: any = await fileResult.json()
     res.json({ webViewLink: fileData.webViewLink, webContentLink: fileData.webContentLink })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
