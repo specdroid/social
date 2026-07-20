@@ -198,26 +198,34 @@ export function OmniroutePanel() {
     const text = chatInput.trim()
     if ((!text && !pendingFile) || sending) return
 
-    let content = text
+    let content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> = text
     let attachment: ChatMessage['attachment'] = undefined
 
     if (pendingFile) {
-      if (text) {
-        content = `${text}\n\n[Attached: ${pendingFile.name} (${formatSize(pendingFile.size)})]`
+      if (pendingFile.type.startsWith('image/')) {
+        const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = []
+        if (text) contentParts.push({ type: 'text', text })
+        contentParts.push({ type: 'image_url', image_url: { url: `data:${pendingFile.type};base64,${pendingFile.base64}` } })
+        content = contentParts
       } else {
-        content = `[Attached: ${pendingFile.name} (${formatSize(pendingFile.size)})]`
+        content = text
+          ? `${text}\n\n[File attached: ${pendingFile.name} (${formatSize(pendingFile.size)})]`
+          : `[File attached: ${pendingFile.name} (${formatSize(pendingFile.size)})]`
       }
       attachment = { name: pendingFile.name, type: pendingFile.type, size: pendingFile.size }
     }
 
-    const userMsg: ChatMessage = { role: 'user', content, attachment }
+    const userMsg: ChatMessage = { role: 'user', content: typeof content === 'string' ? content : text || `[File: ${pendingFile!.name}]`, attachment }
     setMessages(prev => [...prev, userMsg])
     setChatInput('')
     setPendingFile(null)
     setSending(true)
 
     try {
-      const apiMessages = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
+      const apiMessages: Array<{ role: string; content: any }> = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
+      if (pendingFile && typeof content !== 'string') {
+        apiMessages[apiMessages.length - 1].content = content
+      }
       const data = await post<{ reply: string }>('/api/omniroute/chat', { messages: apiMessages })
       if (data) setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
     } catch (e: any) {

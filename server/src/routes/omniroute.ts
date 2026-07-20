@@ -67,9 +67,8 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
     throw new AppError(400, 'messages must be a non-empty array of {role, content}')
   }
   for (const m of messages) {
-    if (!m.role || !m.content) {
-      throw new AppError(400, 'each message must have role and content')
-    }
+    if (!m.role) throw new AppError(400, 'each message must have role')
+    if (!m.content && !Array.isArray(m.content)) throw new AppError(400, 'each message must have content')
   }
 
   const reply = await chatCompletion(messages, req.userId!)
