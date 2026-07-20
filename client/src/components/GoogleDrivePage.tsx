@@ -176,7 +176,6 @@ export function GoogleDrivePage() {
 
   const [shareTarget, setShareTarget] = useState<DriveFile | null>(null)
   const [shareUrl, setShareUrl] = useState('')
-  const [shareLoading, setShareLoading] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -270,47 +269,45 @@ export function GoogleDrivePage() {
       const content = reader.result as string
       const base64 = content.split(',')[1] || content
 
-      try {
-        const token = localStorage.getItem('token')
-        const xhr = new XMLHttpRequest()
-        xhr.open('POST', `${API_URL}/api/google/drive/${selectedDrive.id}/upload`)
-        xhr.setRequestHeader('Content-Type', 'application/json')
-        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      const token = localStorage.getItem('token')
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${API_URL}/api/google/drive/${selectedDrive.id}/upload`)
+      xhr.setRequestHeader('Content-Type', 'application/json')
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
-        xhr.upload.onprogress = (ev) => {
-          if (ev.lengthComputable) {
-            setUploadProgress(p => p ? { ...p, pct: Math.round((ev.loaded / ev.total) * 100) } : null)
-          }
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable) {
+          setUploadProgress(p => p ? { ...p, pct: Math.round((ev.loaded / ev.total) * 100) } : null)
         }
+      }
 
-        const uploadDone = new Promise<void>((resolve, reject) => {
+      let aborted = false
+      controller.signal.addEventListener('abort', () => {
+        aborted = true
+        xhr.abort()
+      })
+
+      try {
+        await new Promise<void>((resolve, reject) => {
           xhr.onload = () => {
             if (xhr.status >= 200 && xhr.status < 300) resolve()
             else reject(new Error(`Upload failed (${xhr.status})`))
           }
           xhr.onerror = () => reject(new Error('Upload failed'))
+          xhr.send(JSON.stringify({
+            fileName: file.name,
+            mimeType: file.type || 'application/octet-stream',
+            content: base64,
+            folderId,
+          }))
         })
-
-        controller.signal.addEventListener('abort', () => {
-          xhr.abort()
-          reject(new Error('Cancelled'))
-        })
-
-        xhr.send(JSON.stringify({
-          fileName: file.name,
-          mimeType: file.type || 'application/octet-stream',
-          content: base64,
-          folderId,
-        }))
-
-        await uploadDone
         setMsg({ type: 'success', text: `"${file.name}" uploaded!` })
         loadFiles(selectedDrive.id, folderId)
       } catch (err: any) {
-        if (err.message !== 'Cancelled') {
-          setMsg({ type: 'error', text: 'Upload failed' })
-        } else {
+        if (aborted || err.message === 'Cancelled') {
           setMsg({ type: 'error', text: 'Upload cancelled' })
+        } else {
+          setMsg({ type: 'error', text: 'Upload failed' })
         }
       }
       setUploadProgress(null)
@@ -357,7 +354,6 @@ export function GoogleDrivePage() {
     if (!selectedDrive) return
     setShareTarget(file)
     setShareUrl('')
-    setShareLoading(true)
     try {
       const result = await post<{ webViewLink: string; webContentLink: string }>(`/api/google/drive/${selectedDrive.id}/file/${file.id}/share`)
       setShareUrl(result.webViewLink || result.webContentLink || '')
@@ -365,7 +361,6 @@ export function GoogleDrivePage() {
       setMsg({ type: 'error', text: 'Failed to generate link' })
       setShareTarget(null)
     }
-    setShareLoading(false)
   }
 
   const handleDownload = (fileId: string) => {
