@@ -57,7 +57,7 @@ router.post('/keys', requireAuth, async (req: AuthRequest, res: Response) => {
 })
 
 router.delete('/keys/:id', requireAuth, async (req: AuthRequest, res: Response) => {
-  await deleteApiKey(req.params.id, req.userId!)
+  await deleteApiKey(String(req.params.id), req.userId!)
   res.json({ ok: true })
 })
 
