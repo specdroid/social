@@ -206,13 +206,13 @@ export function OmniroutePanel() {
     const maxPages = Math.min(pdf.numPages, 10)
     for (let i = 1; i <= maxPages; i++) {
       const page = await pdf.getPage(i)
-      const viewport = page.getViewport({ scale: 1.5 })
+      const viewport = page.getViewport({ scale: 1.25 })
       const canvas = document.createElement('canvas')
       canvas.width = viewport.width
       canvas.height = viewport.height
       const ctx = canvas.getContext('2d')!
       await page.render({ canvasContext: ctx, viewport, canvas } as any).promise
-      images.push(canvas.toDataURL('image/png').split(',')[1])
+      images.push(canvas.toDataURL('image/jpeg', 0.7).split(',')[1])
     }
     return images
   }
@@ -239,7 +239,7 @@ export function OmniroutePanel() {
         else contentParts.push({ type: 'text', text: `[PDF: ${pendingFile.name} — ${await pdfPageCount(pendingFile.base64)} pages. Pages shown as images below.]` })
         const images = await pdfToImages(pendingFile.base64)
         for (const img of images) {
-          contentParts.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${img}` } })
+          contentParts.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${img}` } })
         }
         content = contentParts
       } else {

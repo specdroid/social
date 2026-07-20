@@ -28,7 +28,7 @@ export function createApp(): express.Application {
   }))
 
   app.use(express.json({
-    limit: '1mb',
+    limit: '20mb',
     verify: (req, _res, buf) => {
       const url = req.url || ''
       if (url.includes('/webhooks/stripe')) {
