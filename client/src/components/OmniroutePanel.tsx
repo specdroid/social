@@ -68,7 +68,7 @@ export function OmniroutePanel() {
   const [config, setConfig] = useState<Config | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
-  const [model, setModel] = useState('research')
+  const [model, setModel] = useState('auto')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -313,7 +313,7 @@ export function OmniroutePanel() {
             value={model}
             onChange={e => setModel(e.target.value)}
             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-50 focus:outline-none focus:border-zinc-500 text-sm font-mono"
-            placeholder="research"
+            placeholder="auto"
           />
         </div>
 

@@ -61,7 +61,7 @@ export async function chatCompletion(messages: { role: string; content: string }
   const key = getNextKey(allKeys)
 
   const body: any = {
-    model: config.model || 'research',
+    model: config.model || 'auto',
     stream: false,
     messages: [],
   }

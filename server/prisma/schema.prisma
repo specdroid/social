@@ -211,7 +211,7 @@ model OmnirouteConfig {
   user         User     @relation(fields: [userId], references: [id])
   baseUrl      String   @default("https://omniroutelb.duckdns.org/v1")
   apiKey       String   @default("")
-  model        String   @default("research")
+  model        String   @default("auto")
   systemPrompt String   @default("")
   updatedAt    DateTime @updatedAt
 
