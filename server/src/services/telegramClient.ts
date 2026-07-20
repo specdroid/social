@@ -116,12 +116,24 @@ function setupEventHandlers() {
 }
 
 export async function initClient(userId: string): Promise<void> {
-  if (client) return
+  if (client) {
+    try {
+      if (client.connected) return
+    } catch { /* client exists but broken */ }
+    try { client.disconnect() } catch { /* ignore */ }
+    try { client.destroy() } catch { /* ignore */ }
+    client = null
+    stringSession = null
+  }
   activeUserId = userId
   const sessionStr = await loadSession(userId)
   stringSession = new StringSession(sessionStr)
   client = new TelegramClient(stringSession, env.TELEGRAM_API_ID, env.TELEGRAM_API_HASH, {
     connectionRetries: 5,
+    retryDelay: 2000,
+    autoReconnect: true,
+    requestRetries: 3,
+    timeout: 30000,
   })
   await client.connect()
 }
@@ -132,8 +144,22 @@ async function ensureReady(userId: string) {
   try {
     await c.invoke(new Api.updates.GetState())
     setupEventHandlers()
-  } catch {
-    throw new Error('Telegram not authorised')
+  } catch (err: any) {
+    log('warn', 'telegram', 'Telegram not ready, attempting reconnect', { error: err.message })
+    try {
+      if (client) { try { client.disconnect() } catch { /* ignore */ } try { client.destroy() } catch { /* ignore */ } }
+      client = null
+      stringSession = null
+      await initClient(userId)
+      const c2 = getClient()
+      await c2.invoke(new Api.updates.GetState())
+      setupEventHandlers()
+      await saveSession(userId, '')
+      log('info', 'telegram', 'Telegram reconnected successfully')
+    } catch (err2: any) {
+      log('error', 'telegram', 'Telegram reconnect failed', { error: err2.message })
+      throw new Error('Telegram not authorised')
+    }
   }
 }
 
