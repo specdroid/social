@@ -86,7 +86,8 @@ router.get('/status', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const testMessages = [{ role: 'user', content: 'Say exactly: OK' }]
     const reply = await chatCompletion(testMessages, req.userId!)
-    const ok = reply.trim().toLowerCase() === 'ok'
+    const clean = reply.trim().toLowerCase()
+    const ok = clean.includes('ok') && !clean.includes('error')
     res.json({ ok, reply: reply.slice(0, 100) })
   } catch (err: any) {
     res.json({ ok: false, error: err.message })
