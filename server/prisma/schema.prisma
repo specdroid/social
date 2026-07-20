@@ -48,7 +48,7 @@ model User {
   whatsappContacts        WhatsAppContact[]
   whatsappImportedContacts WhatsAppImportedContact[]
   whatsappContactGroups   WhatsAppContactGroup[]
-  googleDrive             GoogleDrive?
+  googleDrives            GoogleDrive[]
 }
 
 model Session {
@@ -308,8 +308,7 @@ model GoogleDrive {
   refreshToken String
   expiresAt    DateTime
   email        String?
+  label        String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-
-  @@unique([userId])
 }

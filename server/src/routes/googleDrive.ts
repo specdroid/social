@@ -4,6 +4,9 @@ import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import { AppError } from '../middleware/errorHandler'
 import { execFile } from 'child_process'
+import fs from 'fs'
+import path from 'path'
+import os from 'os'
 
 const prisma = new PrismaClient()
 const router = Router()
@@ -31,6 +34,47 @@ async function refreshAccessToken(refreshToken: string): Promise<{ access_token:
   return data
 }
 
+async function getAccessToken(driveId: string): Promise<string> {
+  let drive = await prisma.googleDrive.findUnique({ where: { id: driveId } })
+  if (!drive) throw new AppError(404, 'Google Drive not found')
+  if (drive.expiresAt < new Date() && drive.refreshToken) {
+    const refreshed = await refreshAccessToken(drive.refreshToken)
+    if (refreshed) {
+      drive = await prisma.googleDrive.update({
+        where: { id: driveId },
+        data: { accessToken: refreshed.access_token, expiresAt: new Date(Date.now() + refreshed.expires_in * 1000) },
+      })
+    }
+  }
+  if (drive.expiresAt < new Date()) throw new AppError(400, 'Google Drive token expired, please reconnect')
+  return drive.accessToken
+}
+
+async function getAccessTokenForUser(userId: string): Promise<string> {
+  const drive = await prisma.googleDrive.findFirst({ where: { userId } })
+  if (!drive) throw new AppError(400, 'Google Drive not connected')
+  return getAccessToken(drive.id)
+}
+
+async function uploadToGoogleDrive(accessToken: string, fileName: string, mimeType: string, content: string | Buffer, parentFolderId?: string) {
+  const metadata: any = { name: fileName, mimeType }
+  if (parentFolderId) metadata.parents = [parentFolderId]
+
+  const form = new FormData()
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }))
+  form.append('file', new Blob([content], { type: mimeType }))
+
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: form,
+  })
+  const data: any = await res.json()
+  if (data.error) throw new Error(data.error.message)
+  return data
+}
+
+// ── OAuth: start ──
 router.get('/auth', async (req: AuthRequest, res: Response) => {
   const token = req.query.token as string
   if (!token) { res.status(401).json({ error: 'Authentication required' }); return }
@@ -42,6 +86,9 @@ router.get('/auth', async (req: AuthRequest, res: Response) => {
     userId = decoded.userId
   } catch { res.status(401).json({ error: 'Invalid token' }); return }
 
+  const label = (req.query.label as string) || 'My Drive'
+  const state = JSON.stringify({ userId, label })
+
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: REDIRECT_URI,
@@ -49,18 +96,29 @@ router.get('/auth', async (req: AuthRequest, res: Response) => {
     scope: SCOPES.join(' '),
     access_type: 'offline',
     prompt: 'consent',
-    state: userId,
+    state,
   })
   res.redirect(`https://accounts.google.com/o/oauth2/auth?${params.toString()}`)
 })
 
+// ── OAuth: callback ──
 router.get('/callback', async (req: AuthRequest, res: Response) => {
-  const { code, state, error } = req.query
-  const userId = state as string
+  const { code, state: stateStr, error } = req.query
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
 
   if (error || !code) {
     res.redirect(`${frontendUrl}/google-drive?error=auth_failed`)
+    return
+  }
+
+  let userId: string
+  let label: string
+  try {
+    const parsed = JSON.parse(stateStr as string)
+    userId = parsed.userId
+    label = parsed.label || 'My Drive'
+  } catch {
+    res.redirect(`${frontendUrl}/google-drive?error=invalid_state`)
     return
   }
 
@@ -91,20 +149,24 @@ router.get('/callback', async (req: AuthRequest, res: Response) => {
       email = userInfo.email || null
     } catch { /* ignore */ }
 
-    await prisma.googleDrive.upsert({
-      where: { userId },
-      update: {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token || undefined,
-        expiresAt,
-        email,
-      },
-      create: {
+    if (!email) {
+      try {
+        const aboutRes = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+          headers: { Authorization: `Bearer ${tokens.access_token}` },
+        })
+        const about: any = await aboutRes.json()
+        email = about?.user?.emailAddress || null
+      } catch { /* ignore */ }
+    }
+
+    await prisma.googleDrive.create({
+      data: {
         userId,
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || '',
         expiresAt,
         email,
+        label,
       },
     })
 
@@ -114,51 +176,197 @@ router.get('/callback', async (req: AuthRequest, res: Response) => {
   }
 })
 
+// ── List all drives ──
+router.get('/drives', requireAuth, async (req: AuthRequest, res: Response) => {
+  const drives = await prisma.googleDrive.findMany({
+    where: { userId: req.userId! },
+    select: { id: true, email: true, label: true, createdAt: true },
+    orderBy: { createdAt: 'asc' },
+  })
+  res.json({ drives })
+})
+
+// ── Status (backward compat: returns first drive) ──
 router.get('/status', requireAuth, async (req: AuthRequest, res: Response) => {
-  let drive = await prisma.googleDrive.findUnique({ where: { userId: req.userId! } })
+  const drive = await prisma.googleDrive.findFirst({ where: { userId: req.userId! } })
   if (!drive) { res.json({ connected: false }); return }
 
   if (drive.expiresAt < new Date() && drive.refreshToken) {
     const refreshed = await refreshAccessToken(drive.refreshToken)
     if (refreshed) {
-      drive = await prisma.googleDrive.update({
-        where: { userId: req.userId! },
-        data: {
-          accessToken: refreshed.access_token,
-          expiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
-        },
+      await prisma.googleDrive.update({
+        where: { id: drive.id },
+        data: { accessToken: refreshed.access_token, expiresAt: new Date(Date.now() + refreshed.expires_in * 1000) },
       })
     }
   }
 
-  const expired = drive.expiresAt < new Date()
-  res.json({ connected: true, expired, email: drive.email })
+  const updated = await prisma.googleDrive.findFirst({ where: { userId: req.userId! } })
+  const expired = (updated?.expiresAt || drive.expiresAt) < new Date()
+  res.json({ connected: true, expired, email: updated?.email || drive.email })
 })
 
-router.post('/refresh', requireAuth, async (req: AuthRequest, res: Response) => {
-  const drive = await prisma.googleDrive.findUnique({ where: { userId: req.userId! } })
-  if (!drive) { res.status(404).json({ error: 'Not connected' }); return }
+// ── Disconnect specific drive ──
+router.post('/disconnect/:driveId', requireAuth, async (req: AuthRequest, res: Response) => {
+  const driveId = String(req.params.driveId)
+  const drive = await prisma.googleDrive.findFirst({ where: { id: driveId, userId: req.userId! } })
+  if (!drive) { res.status(404).json({ error: 'Drive not found' }); return }
+  await prisma.googleDrive.delete({ where: { id: drive.id } })
+  res.json({ ok: true })
+})
+
+// ── Disconnect all drives ──
+router.post('/disconnect', requireAuth, async (req: AuthRequest, res: Response) => {
+  await prisma.googleDrive.deleteMany({ where: { userId: req.userId! } })
+  res.json({ ok: true })
+})
+
+// ── Refresh specific drive ──
+router.post('/refresh/:driveId', requireAuth, async (req: AuthRequest, res: Response) => {
+  const drive = await prisma.googleDrive.findFirst({ where: { id: String(req.params.driveId), userId: req.userId! } })
+  if (!drive) { res.status(404).json({ error: 'Drive not found' }); return }
   if (!drive.refreshToken) { res.status(400).json({ error: 'No refresh token' }); return }
 
   const refreshed = await refreshAccessToken(drive.refreshToken)
   if (!refreshed) { res.status(400).json({ error: 'Failed to refresh token' }); return }
 
   await prisma.googleDrive.update({
-    where: { userId: req.userId! },
-    data: {
-      accessToken: refreshed.access_token,
-      expiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
-    },
+    where: { id: drive.id },
+    data: { accessToken: refreshed.access_token, expiresAt: new Date(Date.now() + refreshed.expires_in * 1000) },
   })
-
   res.json({ ok: true, expired: false })
 })
 
-router.post('/disconnect', requireAuth, async (req: AuthRequest, res: Response) => {
-  await prisma.googleDrive.deleteMany({ where: { userId: req.userId! } })
-  res.json({ ok: true })
+// ── Browse files in a drive ──
+router.get('/drive/:driveId/files', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const drive = await prisma.googleDrive.findFirst({ where: { id: String(req.params.driveId), userId: req.userId! } })
+    if (!drive) { res.status(404).json({ error: 'Drive not found' }); return }
+
+    const accessToken = await getAccessToken(drive.id)
+    const folderId = (req.query.folderId as string) || 'root'
+
+    const q = `'${folderId}' in parents and trashed = false`
+    const fields = 'files(id,name,mimeType,size,modifiedTime,parents,webViewLink)'
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=${fields}&orderBy=name&pageSize=100`
+
+    const result = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+    const data: any = await result.json()
+    if (data.error) throw new Error(data.error.message)
+
+    res.json({ files: data.files || [], folderId })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
+// ── Create folder in a drive ──
+router.post('/drive/:driveId/folder', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const drive = await prisma.googleDrive.findFirst({ where: { id: String(req.params.driveId), userId: req.userId! } })
+    if (!drive) { res.status(404).json({ error: 'Drive not found' }); return }
+
+    const accessToken = await getAccessToken(drive.id)
+    const { name, parentFolderId } = req.body as { name: string; parentFolderId?: string }
+
+    const metadata: any = { name, mimeType: 'application/vnd.google-apps.folder' }
+    if (parentFolderId) metadata.parents = [parentFolderId]
+
+    const result = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(metadata),
+    })
+    const data: any = await result.json()
+    if (data.error) throw new Error(data.error.message)
+
+    res.json({ ok: true, folder: data })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── Upload file to a drive ──
+router.post('/drive/:driveId/upload', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const drive = await prisma.googleDrive.findFirst({ where: { id: String(req.params.driveId), userId: req.userId! } })
+    if (!drive) { res.status(404).json({ error: 'Drive not found' }); return }
+
+    const accessToken = await getAccessToken(drive.id)
+    const { fileName, mimeType, content, folderId } = req.body as {
+      fileName: string; mimeType: string; content: string; folderId?: string
+    }
+
+    if (!fileName || !content) { res.status(400).json({ error: 'fileName and content are required' }); return }
+
+    const result = await uploadToGoogleDrive(accessToken, fileName, mimeType || 'text/plain', content, folderId)
+    res.json({ ok: true, file: result })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── Download file from a drive ──
+router.get('/drive/:driveId/download/:fileId', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const drive = await prisma.googleDrive.findFirst({ where: { id: String(req.params.driveId), userId: req.userId! } })
+    if (!drive) { res.status(404).json({ error: 'Drive not found' }); return }
+
+    const accessToken = await getAccessToken(drive.id)
+
+    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${req.params.fileId}?fields=name,mimeType,size`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    const meta: any = await metaRes.json()
+    if (meta.error) throw new Error(meta.error.message)
+
+    const result = await fetch(`https://www.googleapis.com/drive/v3/files/${req.params.fileId}?alt=media`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+
+    if (!result.ok) throw new Error(`Download failed: ${result.statusText}`)
+
+    const contentType = result.headers.get('content-type') || 'application/octet-stream'
+    const contentDisp = `attachment; filename="${(meta.name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_')}"`
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Disposition', contentDisp)
+    if (meta.size) res.setHeader('Content-Length', meta.size)
+
+    const reader = (result.body as any).getReader()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      res.write(value)
+    }
+    res.end()
+  } catch (err: any) {
+    if (!res.headersSent) res.status(500).json({ error: err.message })
+  }
+})
+
+// ── Delete file from a drive ──
+router.delete('/drive/:driveId/file/:fileId', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const drive = await prisma.googleDrive.findFirst({ where: { id: String(req.params.driveId), userId: req.userId! } })
+    if (!drive) { res.status(404).json({ error: 'Drive not found' }); return }
+
+    const accessToken = await getAccessToken(drive.id)
+    const result = await fetch(`https://www.googleapis.com/drive/v3/files/${req.params.fileId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+
+    if (!result.ok) {
+      const err: any = await result.json()
+      throw new Error(err.error?.message || 'Delete failed')
+    }
+    res.json({ ok: true })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── NotebookLM export helpers ──
 function nlmRun(args: string[], timeout = 30000): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(NLM_BIN, args, { timeout }, (err, stdout, stderr) => {
@@ -166,40 +374,6 @@ function nlmRun(args: string[], timeout = 30000): Promise<string> {
       else resolve(stdout.trim())
     })
   })
-}
-
-async function getAccessToken(userId: string): Promise<string> {
-  let drive = await prisma.googleDrive.findUnique({ where: { userId } })
-  if (!drive) throw new AppError(400, 'Google Drive not connected')
-  if (drive.expiresAt < new Date() && drive.refreshToken) {
-    const refreshed = await refreshAccessToken(drive.refreshToken)
-    if (refreshed) {
-      drive = await prisma.googleDrive.update({
-        where: { userId },
-        data: { accessToken: refreshed.access_token, expiresAt: new Date(Date.now() + refreshed.expires_in * 1000) },
-      })
-    }
-  }
-  if (drive.expiresAt < new Date()) throw new AppError(400, 'Google Drive token expired, please reconnect')
-  return drive.accessToken
-}
-
-async function uploadToGoogleDrive(accessToken: string, fileName: string, mimeType: string, content: string | Buffer, parentFolderId?: string) {
-  const metadata: any = { name: fileName, mimeType }
-  if (parentFolderId) metadata.parents = [parentFolderId]
-
-  const form = new FormData()
-  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }))
-  form.append('file', new Blob([content], { type: mimeType }))
-
-  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}` },
-    body: form,
-  })
-  const data: any = await res.json()
-  if (data.error) throw new Error(data.error.message)
-  return data
 }
 
 function flashcardsToCsv(data: any): string {
@@ -229,13 +403,17 @@ function quizToCsv(data: any): string {
 
 router.post('/export', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const { notebookId, artifactId, type } = req.body as { notebookId: string; artifactId: string; type: string }
+    const { notebookId, artifactId, type, driveId } = req.body as {
+      notebookId: string; artifactId: string; type: string; driveId?: string
+    }
     if (!notebookId || !artifactId || !type) {
       res.status(400).json({ error: 'notebookId, artifactId, and type are required' })
       return
     }
 
-    const accessToken = await getAccessToken(req.userId!)
+    const accessToken = driveId
+      ? await getAccessToken(driveId)
+      : await getAccessTokenForUser(req.userId!)
 
     await nlmRun(['use', notebookId], 60000)
     const artifact = await nlmRun(['artifact', 'get', artifactId, '--json'], 60000)
@@ -245,7 +423,6 @@ router.post('/export', requireAuth, async (req: AuthRequest, res: Response) => {
 
     if (type === 'google-sheets') {
       const tmpDir = `/tmp/nlm-export-${Date.now()}`
-      const fs = require('fs')
       fs.mkdirSync(tmpDir, { recursive: true })
       const outputPath = `${tmpDir}/artifact.json`
       await nlmRun(['download', artifactType, '--artifact', artifactId, outputPath], 300000)
@@ -273,7 +450,6 @@ router.post('/export', requireAuth, async (req: AuthRequest, res: Response) => {
       res.json({ ok: true, fileId: result.id, url: `https://docs.google.com/spreadsheets/d/${result.id}`, name: `${title}.csv` })
     } else if (type === 'google-docs') {
       const tmpDir = `/tmp/nlm-export-${Date.now()}`
-      const fs = require('fs')
       fs.mkdirSync(tmpDir, { recursive: true })
       const outputPath = `${tmpDir}/artifact.md`
       await nlmRun(['download', artifactType, '--artifact', artifactId, outputPath], 300000)
