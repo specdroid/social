@@ -22,12 +22,11 @@ const navItems = [
   { path: '/automation', label: 'Automation', icon: GitBranch },
   { path: '/facebook', label: 'Facebook', icon: Facebook },
   { path: '/whatsapp', label: 'WhatsApp', icon: MessageSquare },
-  { path: '/omniroute', label: 'Omniroute', icon: Brain },
   { path: '/telegram', label: 'Telegram', icon: TelegramIcon },
   { path: '/google-drive', label: 'Google Drive', icon: HardDrive },
   { path: '/notebooklm', label: 'NotebookLM', icon: Brain },
   { path: '/billing', label: 'Billing', icon: CreditCard },
-  { path: '/help', label: 'Help', icon: HelpCircle },
+  { path: '/omniroute', label: 'Omniroute', icon: Brain },
 ]
 
 export function Layout({ children, onLogout, userRole }: { children: ReactNode; onLogout?: () => void; userRole?: string | null }) {
@@ -56,23 +55,6 @@ export function Layout({ children, onLogout, userRole }: { children: ReactNode; 
         <p className="text-xs text-zinc-500 mt-1">Automation Dashboard</p>
       </div>
       <nav className="flex-1 px-3 space-y-1">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          return (
-            <button
-              key={item.path}
-              onClick={() => handleNav(item.path)}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                location.pathname === item.path
-                  ? 'bg-zinc-800 text-zinc-50'
-                  : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800/50'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {item.label}
-            </button>
-          )
-        })}
         {userRole === 'master' && (
           <button
             onClick={() => handleNav('/admin')}
@@ -99,7 +81,37 @@ export function Layout({ children, onLogout, userRole }: { children: ReactNode; 
             File Explorer
           </button>
         )}
+        {navItems.map((item) => {
+          const Icon = item.icon
+          return (
+            <button
+              key={item.path}
+              onClick={() => handleNav(item.path)}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                location.pathname === item.path
+                  ? 'bg-zinc-800 text-zinc-50'
+                  : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800/50'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {item.label}
+            </button>
+          )
+        })}
       </nav>
+      <div className="px-3 space-y-1 border-t border-zinc-800 pt-3">
+        <button
+          onClick={() => handleNav('/help')}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+            location.pathname === '/help'
+              ? 'bg-zinc-800 text-zinc-50'
+              : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800/50'
+          }`}
+        >
+          <HelpCircle className="w-4 h-4" />
+          Help
+        </button>
+      </div>
       <div className="p-3 border-t border-zinc-800">
         <button
           onClick={handleLogout}
