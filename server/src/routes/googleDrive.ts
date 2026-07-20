@@ -183,7 +183,27 @@ router.get('/drives', requireAuth, async (req: AuthRequest, res: Response) => {
     select: { id: true, email: true, label: true, createdAt: true },
     orderBy: { createdAt: 'asc' },
   })
-  res.json({ drives })
+
+  const drivesWithStorage = await Promise.all(drives.map(async (d) => {
+    try {
+      const accessToken = await getAccessToken(d.id)
+      const aboutRes = await fetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      const about: any = await aboutRes.json()
+      const q = about.storageQuota || {}
+      return {
+        ...d,
+        storageLimit: q.limit ? parseInt(q.limit, 10) : null,
+        storageUsed: q.usageInDrive ? parseInt(q.usageInDrive, 10) : null,
+        storageTrash: q.usageInDriveTrash ? parseInt(q.usageInDriveTrash, 10) : null,
+      }
+    } catch {
+      return { ...d, storageLimit: null, storageUsed: null, storageTrash: null }
+    }
+  }))
+
+  res.json({ drives: drivesWithStorage })
 })
 
 // ── Status (backward compat: returns first drive) ──

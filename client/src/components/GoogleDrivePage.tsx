@@ -9,6 +9,9 @@ interface DriveInfo {
   email: string | null
   label: string | null
   createdAt: string
+  storageLimit: number | null
+  storageUsed: number | null
+  storageTrash: number | null
 }
 
 interface DriveFile {
@@ -49,6 +52,31 @@ function formatSize(bytes?: string) {
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`
   if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`
   return `${(b / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
+function formatBytes(bytes: number | null) {
+  if (bytes === null || bytes === undefined) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}
+
+function StorageBar({ used, limit }: { used: number | null; limit: number | null }) {
+  if (used === null || limit === null || limit === 0) return null
+  const pct = Math.min((used / limit) * 100, 100)
+  const color = pct > 90 ? 'bg-red-500' : pct > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between text-xs text-zinc-500 mb-1">
+        <span>{formatBytes(used)} used</span>
+        <span>{formatBytes(limit)} total</span>
+      </div>
+      <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  )
 }
 
 export function GoogleDrivePage() {
@@ -372,6 +400,7 @@ export function GoogleDrivePage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-zinc-200 truncate">{drive.label || 'Google Drive'}</p>
                     <p className="text-xs text-zinc-500 truncate">{drive.email}</p>
+                    <StorageBar used={drive.storageUsed} limit={drive.storageLimit} />
                   </div>
                   <ChevronRight className="w-4 h-4 text-zinc-500" />
                 </button>
