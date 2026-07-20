@@ -29,7 +29,6 @@ export function OmniroutePanel() {
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('auto/coding:free')
   const [systemPrompt, setSystemPrompt] = useState('')
-  const [showNewKeyInput, setShowNewKeyInput] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [testStatus, setTestStatus] = useState<{ ok: boolean; reply?: string; error?: string; msg?: string } | null>(null)
