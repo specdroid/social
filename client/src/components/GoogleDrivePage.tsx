@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { HardDrive, LogOut, Check, AlertCircle, Loader2, RefreshCw, FolderOpen, ArrowLeft, Upload, Trash2, Download, Plus, ChevronRight } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { HardDrive, LogOut, Check, AlertCircle, Loader2, RefreshCw, FolderOpen, ArrowLeft, Upload, Trash2, Download, Plus, ChevronRight, Share2, X, Link2, Copy } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
@@ -79,6 +79,80 @@ function StorageBar({ used, limit }: { used: number | null; limit: number | null
   )
 }
 
+function DeleteDialog({ open, fileName, onConfirm, onCancel }: { open: boolean; fileName: string; onConfirm: () => void; onCancel: () => void }) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
+            <Trash2 className="w-5 h-5 text-red-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-100">Delete File</h3>
+            <p className="text-xs text-zinc-400 mt-0.5">This action cannot be undone.</p>
+          </div>
+        </div>
+        <p className="text-sm text-zinc-300 mb-6">
+          Are you sure you want to delete <span className="font-medium text-zinc-100">"{fileName}"</span>?
+        </p>
+        <div className="flex justify-end gap-2">
+          <button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors">
+            Cancel
+          </button>
+          <button onClick={onConfirm} className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors">
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ShareDialog({ open, shareUrl, fileName, onClose }: { open: boolean; shareUrl: string; fileName: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false)
+  if (!open) return null
+  const handleCopy = () => {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+              <Link2 className="w-5 h-5 text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-100">Public Link</h3>
+              <p className="text-xs text-zinc-500 truncate max-w-[220px]">{fileName}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 text-zinc-500 hover:text-zinc-300 rounded-lg hover:bg-zinc-800">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 mb-4">
+          <p className="text-xs text-zinc-400 break-all select-all font-mono">{shareUrl}</p>
+        </div>
+        <p className="text-xs text-zinc-500 mb-4">Anyone with this link can view and download this file.</p>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors">
+            Close
+          </button>
+          <button onClick={handleCopy} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors">
+            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            {copied ? 'Copied!' : 'Copy Link'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function GoogleDrivePage() {
   const { get, post } = useApi()
   const [drives, setDrives] = useState<DriveInfo[]>([])
@@ -89,12 +163,20 @@ export function GoogleDrivePage() {
   const [files, setFiles] = useState<DriveFile[]>([])
   const [filesLoading, setFilesLoading] = useState(false)
   const [folderStack, setFolderStack] = useState<Array<{ id: string; name: string }>>([])
-  const [uploading, setUploading] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [showNewFolder, setShowNewFolder] = useState(false)
 
   const [newDriveLabel, setNewDriveLabel] = useState('')
   const [showNewLabel, setShowNewLabel] = useState(false)
+
+  const [uploadProgress, setUploadProgress] = useState<{ pct: number; fileName: string; cancelKey: string } | null>(null)
+  const uploadControllerRef = useRef<AbortController | null>(null)
+
+  const [deleteTarget, setDeleteTarget] = useState<DriveFile | null>(null)
+
+  const [shareTarget, setShareTarget] = useState<DriveFile | null>(null)
+  const [shareUrl, setShareUrl] = useState('')
+  const [shareLoading, setShareLoading] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -173,31 +255,73 @@ export function GoogleDrivePage() {
     loadFiles(selectedDrive.id, file.id)
   }
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length || !selectedDrive) return
-    setUploading(true)
     const file = e.target.files[0]
+    const folderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : undefined
+    const controller = new AbortController()
+    const cancelKey = Date.now().toString()
+
+    uploadControllerRef.current = controller
+    setUploadProgress({ pct: 0, fileName: file.name, cancelKey })
+
     const reader = new FileReader()
     reader.onload = async () => {
       const content = reader.result as string
       const base64 = content.split(',')[1] || content
-      const folderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : undefined
+
       try {
-        await post(`/api/google/drive/${selectedDrive.id}/upload`, {
+        const token = localStorage.getItem('token')
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', `${API_URL}/api/google/drive/${selectedDrive.id}/upload`)
+        xhr.setRequestHeader('Content-Type', 'application/json')
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) {
+            setUploadProgress(p => p ? { ...p, pct: Math.round((ev.loaded / ev.total) * 100) } : null)
+          }
+        }
+
+        const uploadDone = new Promise<void>((resolve, reject) => {
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve()
+            else reject(new Error(`Upload failed (${xhr.status})`))
+          }
+          xhr.onerror = () => reject(new Error('Upload failed'))
+        })
+
+        controller.signal.addEventListener('abort', () => {
+          xhr.abort()
+          reject(new Error('Cancelled'))
+        })
+
+        xhr.send(JSON.stringify({
           fileName: file.name,
           mimeType: file.type || 'application/octet-stream',
           content: base64,
           folderId,
-        })
+        }))
+
+        await uploadDone
         setMsg({ type: 'success', text: `"${file.name}" uploaded!` })
         loadFiles(selectedDrive.id, folderId)
-      } catch {
-        setMsg({ type: 'error', text: 'Upload failed' })
+      } catch (err: any) {
+        if (err.message !== 'Cancelled') {
+          setMsg({ type: 'error', text: 'Upload failed' })
+        } else {
+          setMsg({ type: 'error', text: 'Upload cancelled' })
+        }
       }
-      setUploading(false)
+      setUploadProgress(null)
+      uploadControllerRef.current = null
     }
     reader.readAsDataURL(file)
     e.target.value = ''
+  }
+
+  const handleCancelUpload = () => {
+    uploadControllerRef.current?.abort()
   }
 
   const handleCreateFolder = async () => {
@@ -217,15 +341,31 @@ export function GoogleDrivePage() {
     }
   }
 
-  const handleDeleteFile = async (fileId: string) => {
-    if (!selectedDrive || !confirm('Delete this file?')) return
+  const handleDeleteFile = async () => {
+    if (!selectedDrive || !deleteTarget) return
     try {
-      await post(`/api/google/drive/${selectedDrive.id}/delete/${fileId}`)
-      setFiles(f => f.filter(file => file.id !== fileId))
+      await post(`/api/google/drive/${selectedDrive.id}/delete/${deleteTarget.id}`)
+      setFiles(f => f.filter(file => file.id !== deleteTarget.id))
       setMsg({ type: 'success', text: 'File deleted' })
     } catch {
       setMsg({ type: 'error', text: 'Delete failed' })
     }
+    setDeleteTarget(null)
+  }
+
+  const handleShare = async (file: DriveFile) => {
+    if (!selectedDrive) return
+    setShareTarget(file)
+    setShareUrl('')
+    setShareLoading(true)
+    try {
+      const result = await post<{ webViewLink: string; webContentLink: string }>(`/api/google/drive/${selectedDrive.id}/file/${file.id}/share`)
+      setShareUrl(result.webViewLink || result.webContentLink || '')
+    } catch {
+      setMsg({ type: 'error', text: 'Failed to generate link' })
+      setShareTarget(null)
+    }
+    setShareLoading(false)
   }
 
   const handleDownload = (fileId: string) => {
@@ -295,8 +435,8 @@ export function GoogleDrivePage() {
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 text-zinc-300 rounded-lg text-xs font-medium hover:bg-zinc-700 cursor-pointer transition-colors">
                 <Upload className="w-3.5 h-3.5" />
-                {uploading ? 'Uploading...' : 'Upload'}
-                <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
+                Upload
+                <input type="file" className="hidden" onChange={handleUpload} disabled={!!uploadProgress} />
               </label>
               <button onClick={() => setShowNewFolder(!showNewFolder)} className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 text-zinc-300 rounded-lg text-xs font-medium hover:bg-zinc-700 transition-colors">
                 <FolderOpen className="w-3.5 h-3.5" />
@@ -304,6 +444,23 @@ export function GoogleDrivePage() {
               </button>
             </div>
           </div>
+
+          {uploadProgress && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-zinc-300 truncate max-w-[200px]">Uploading {uploadProgress.fileName}</p>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-zinc-400 tabular-nums">{uploadProgress.pct}%</span>
+                  <button onClick={handleCancelUpload} className="p-1 text-zinc-400 hover:text-red-400 rounded transition-colors" title="Cancel upload">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+              <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-blue-500 transition-all duration-200" style={{ width: `${uploadProgress.pct}%` }} />
+              </div>
+            </div>
+          )}
 
           {folderStack.length > 0 && (
             <div className="flex items-center gap-1 text-sm text-zinc-400 px-1">
@@ -375,11 +532,16 @@ export function GoogleDrivePage() {
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     {file.mimeType !== 'application/vnd.google-apps.folder' && (
-                      <button onClick={() => handleDownload(file.id)} className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded" title="Download">
-                        <Download className="w-4 h-4" />
-                      </button>
+                      <>
+                        <button onClick={() => handleShare(file)} className="p-1.5 text-zinc-400 hover:text-blue-400 rounded" title="Share link">
+                          <Share2 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleDownload(file.id)} className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded" title="Download">
+                          <Download className="w-4 h-4" />
+                        </button>
+                      </>
                     )}
-                    <button onClick={() => handleDeleteFile(file.id)} className="p-1.5 text-zinc-400 hover:text-red-400 rounded" title="Delete">
+                    <button onClick={() => setDeleteTarget(file)} className="p-1.5 text-zinc-400 hover:text-red-400 rounded" title="Delete">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -417,6 +579,9 @@ export function GoogleDrivePage() {
           ))}
         </div>
       )}
+
+      <DeleteDialog open={!!deleteTarget} fileName={deleteTarget?.name || ''} onConfirm={handleDeleteFile} onCancel={() => setDeleteTarget(null)} />
+      <ShareDialog open={!!shareTarget} shareUrl={shareUrl} fileName={shareTarget?.name || ''} onClose={() => { setShareTarget(null); setShareUrl('') }} />
     </div>
   )
 }

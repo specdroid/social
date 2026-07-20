@@ -375,6 +375,42 @@ router.get('/drive/:driveId/download/:fileId', async (req: AuthRequest, res: Res
   }
 })
 
+// ── Generate shared public link ──
+router.post('/drive/:driveId/file/:fileId/share', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const drive = await prisma.googleDrive.findFirst({ where: { id: String(req.params.driveId), userId: req.userId! } })
+    if (!drive) { res.status(404).json({ error: 'Drive not found' }); return }
+
+    const accessToken = await getAccessToken(drive.id)
+    const { fileId } = req.params
+
+    const permResult = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+    })
+
+    if (!permResult.ok) {
+      const err: any = await permResult.json()
+      throw new Error(err.error?.message || 'Failed to set sharing permission')
+    }
+
+    const fileResult = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=webViewLink,webContentLink`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+
+    if (!fileResult.ok) {
+      const err: any = await fileResult.json()
+      throw new Error(err.error?.message || 'Failed to fetch file link')
+    }
+
+    const fileData = await fileResult.json()
+    res.json({ webViewLink: fileData.webViewLink, webContentLink: fileData.webContentLink })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ── Delete file from a drive ──
 router.delete('/drive/:driveId/file/:fileId', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
