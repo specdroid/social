@@ -110,15 +110,6 @@ export function OmniroutePanel() {
     chatEnd.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  async function saveMessages(msgs: ChatMessage[]) {
-    if (!msgs.length || !currentChatId) return
-    try {
-      const title = msgs[0]?.content?.slice(0, 50) || 'Chat'
-      await put(`/api/omniroute/chats/${currentChatId}`, { messages: msgs.map(m => ({ role: m.role, content: m.content })), title })
-      loadChats()
-    } catch {}
-  }
-
   async function loadConfig() {
     try {
       const data = await get<Config>('/api/omniroute/config')
