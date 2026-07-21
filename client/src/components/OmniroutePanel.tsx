@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { Brain, Send, Check, X, Eye, EyeOff, Loader2, MessageSquare, Plus, Trash2, Key, Paperclip, Copy, FileCode, FileText } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { Brain, Send, Check, X, Eye, EyeOff, Loader2, MessageSquare, Plus, Trash2, Key, Paperclip, Copy, FileCode, FileText, Square } from 'lucide-react'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import * as pdfjsLib from 'pdfjs-dist'
 import { useApi } from '../hooks/useApi'
+import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 
@@ -56,18 +58,40 @@ function exportAsHtml(content: string) {
   if (w) { w.document.write(html); w.document.close() }
 }
 
-function exportAsPdf(content: string) {
-  const rendered = renderMathInText(content)
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Omniroute Response</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:0 auto;padding:2rem;line-height:1.6;color:#1a1a2e}img{max-width:100%}.katex{font-size:1.05em}code{background:#f1f1f1;padding:0.2em 0.4em;border-radius:3px;font-size:0.9em}pre{background:#f5f5f5;padding:1rem;border-radius:8px;overflow-x:auto}pre code{background:none;padding:0}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px;text-align:left}@media print{body{padding:1cm}}</style></head><body>${rendered}<script>window.onload=function(){window.print()}<\/script></body></html>`
-  const w = window.open('', '_blank')
-  if (w) { w.document.write(html); w.document.close() }
+async function exportAsPdf(content: string) {
+  const container = document.createElement('div')
+  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;padding:40px;background:#fff;font-family:system-ui,sans-serif;line-height:1.8;font-size:14px;color:#1a1a2e;z-index:9999'
+  container.innerHTML = renderMathInText(content)
+  document.body.appendChild(container)
+  try {
+    await new Promise(r => setTimeout(r, 300))
+    const canvas = await html2canvas(container, { scale: 2, useCORS: true, logging: false })
+    const pdf = new jsPDF('p', 'mm', 'a4')
+    const pdfW = pdf.internal.pageSize.getWidth()
+    const pdfH = pdf.internal.pageSize.getHeight()
+    const imgW = pdfW
+    const imgH = (canvas.height * pdfW) / canvas.width
+    const pageH = (pdfH * canvas.width) / pdfW
+    for (let y = 0; y < canvas.height; y += pageH) {
+      if (y > 0) pdf.addPage()
+      const chunk = document.createElement('canvas')
+      chunk.width = canvas.width
+      chunk.height = Math.min(pageH, canvas.height - y)
+      const ctx = chunk.getContext('2d')!
+      ctx.drawImage(canvas, 0, y, canvas.width, chunk.height, 0, 0, chunk.width, chunk.height)
+      pdf.addImage(chunk.toDataURL('image/png'), 'PNG', 0, 0, imgW, (chunk.height * pdfW) / canvas.width)
+    }
+    pdf.save('omniroute-response.pdf')
+  } finally {
+    document.body.removeChild(container)
+  }
 }
 
-function MessageContent({ content }: { content: string }) {
+function MessageContent({ content, isUser }: { content: string; isUser?: boolean }) {
   const html = useMemo(() => renderMathInText(content), [content])
   const hasMath = html.includes('katex')
   if (!hasMath) return <span className="whitespace-pre-wrap">{content}</span>
-  return <span className="prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: html }} />
+  return <span className={`prose-invert prose-sm max-w-none ${isUser ? 'text-white' : 'text-zinc-100'}`} style={{ color: isUser ? '#fff' : '#e4e4e7' }} dangerouslySetInnerHTML={{ __html: html }} />
 }
 
 function fileIcon(mime: string) {
@@ -86,7 +110,7 @@ function formatSize(bytes: number) {
 }
 
 export function OmniroutePanel() {
-  const { get, post, postAi, put, del } = useApi()
+  const { get, post, put, del } = useApi()
   const [config, setConfig] = useState<Config | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -107,6 +131,8 @@ export function OmniroutePanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [sending, setSending] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const [pendingFile, setPendingFile] = useState<{ name: string; type: string; size: number; base64: string } | null>(null)
   const chatEnd = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -324,12 +350,21 @@ export function OmniroutePanel() {
     }
 
     try {
+      const controller = new AbortController()
+      abortRef.current = controller
       const apiMessages: Array<{ role: string; content: any }> = newMessages.map(m => ({ role: m.role, content: m.content }))
       if (pendingFile && typeof content !== 'string') {
         apiMessages[apiMessages.length - 1].content = content
       }
-      const data = await postAi<{ reply: string }>('/api/omniroute/chat', { messages: apiMessages })
-      if (data) {
+      const token = localStorage.getItem('token')
+      const res = await fetch('/api/omniroute/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ messages: apiMessages }),
+        signal: controller.signal,
+      })
+      if (res.ok) {
+        const data = await res.json()
         const finalMessages = [...newMessages, { role: 'assistant' as const, content: data.reply }]
         setMessages(finalMessages)
         if (chatId) {
@@ -339,10 +374,15 @@ export function OmniroutePanel() {
             loadChats()
           } catch {}
         }
+      } else {
+        const err = await res.text()
+        setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err}` }])
       }
     } catch (e: any) {
+      if (e.name === 'AbortError') return
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${e.message}` }])
     } finally {
+      abortRef.current = null
       setSending(false)
     }
   }
@@ -359,6 +399,12 @@ export function OmniroutePanel() {
 
   function handleRemoveMessage(index: number) {
     setMessages(prev => prev.filter((_, i) => i !== index))
+  }
+
+  function handleStop() {
+    abortRef.current?.abort()
+    abortRef.current = null
+    setSending(false)
   }
 
   return (
@@ -568,11 +614,27 @@ export function OmniroutePanel() {
                     <span className="opacity-60">{formatSize(msg.attachment.size)}</span>
                   </div>
                 )}
-                <MessageContent content={msg.content} />
+                <MessageContent content={msg.content} isUser={msg.role === 'user'} />
                 <div className={`flex gap-1 mt-1.5 ${msg.role === 'user' ? 'justify-start' : 'justify-start'}`}>
                   {msg.role === 'user' ? (
-                    <button onClick={() => { navigator.clipboard.writeText(typeof msg.content === 'string' ? msg.content : '') }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors" title="Copy prompt">
-                      <Copy className="w-3 h-3" />
+                    <button onClick={async () => {
+                      const text = typeof msg.content === 'string' ? msg.content : ''
+                      try {
+                        await navigator.clipboard.writeText(text)
+                        setCopiedIdx(i)
+                        setTimeout(() => setCopiedIdx(null), 1500)
+                      } catch {
+                        const ta = document.createElement('textarea')
+                        ta.value = text
+                        document.body.appendChild(ta)
+                        ta.select()
+                        document.execCommand('copy')
+                        document.body.removeChild(ta)
+                        setCopiedIdx(i)
+                        setTimeout(() => setCopiedIdx(null), 1500)
+                      }
+                    }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors flex items-center gap-0.5" title="Copy prompt">
+                      {copiedIdx === i ? <><Check className="w-3 h-3" /> Copied</> : <Copy className="w-3 h-3" />}
                     </button>
                   ) : (
                     <>
@@ -597,9 +659,9 @@ export function OmniroutePanel() {
           ))}
           {sending && (
             <div className="flex justify-start">
-              <div className="bg-zinc-800 rounded-lg px-3 py-2">
-                <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
-              </div>
+              <button onClick={handleStop} className="bg-red-600 hover:bg-red-500 rounded-lg px-3 py-2 flex items-center gap-1.5 text-white text-xs font-medium transition-colors" title="Stop generating">
+                <Square className="w-3.5 h-3.5 fill-current" /> Stop
+              </button>
             </div>
           )}
           <div ref={chatEnd} />

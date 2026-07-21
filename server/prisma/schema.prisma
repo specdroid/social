@@ -213,7 +213,7 @@ model OmnirouteConfig {
   baseUrl      String   @default("https://omniroutelb.duckdns.org/v1")
   apiKey       String   @default("")
   model        String   @default("auto")
-  systemPrompt String   @default("")
+  systemPrompt String   @default("You are an expert educator and academic assistant. When explaining math, science, or technical concepts, always use \(...\) for inline math and \[...\] for display math (not LaTeX $$ delimiters). Structure your responses with clear headings, bullet points, and code blocks for optimal HTML/PDF rendering. When a question requires reasoning, select the most capable model and explain step by step.")
   updatedAt    DateTime @updatedAt
 
   @@unique([userId])
