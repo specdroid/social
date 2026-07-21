@@ -3,7 +3,6 @@ import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import { AppError } from '../middleware/errorHandler'
 import { getConfig, updateConfig, chatCompletion, getApiKeys, addApiKey, deleteApiKey, listChats, getChat, createChat, updateChat, deleteChat } from '../services/omniroute'
-import katex from 'katex'
 import { chromium } from 'playwright'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -128,51 +127,13 @@ router.delete('/chats/:id', requireAuth, async (req: AuthRequest, res: Response)
 })
 
 
-function renderMathInText(text: string): string {
-  let result = text
-  result = result.replace(/\$\$([\s\S]+?)\$\$/g, (_, math: string) => {
-    try { return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false }) }
-    catch { return `<code>${math}</code>` }
-  })
-  result = result.replace(/\\\[(.+?)\\\]/gs, (_, math: string) => {
-    try { return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false }) }
-    catch { return `<code>${math}</code>` }
-  })
-  result = result.replace(/\$([^\n$]+?)\$/g, (_, math: string) => {
-    try { return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false }) }
-    catch { return `<code>${math}</code>` }
-  })
-  result = result.replace(/\\\((.+?)\\\)/gs, (_, math: string) => {
-    try { return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false }) }
-    catch { return `<code>${math}</code>` }
-  })
-  return result
-}
 
 router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) => {
-  const { content } = req.body
-  if (!content || typeof content !== 'string') throw new AppError(400, 'content is required')
+  const { html } = req.body
+  if (!html || typeof html !== 'string') throw new AppError(400, 'html is required')
 
-  const trimmed = content.trim()
-  let finalHtml: string
-
-  const htmlBlockMatch = trimmed.match(/^```(?:html|HTML)\s*\n([\s\S]*?)```\s*$/)
-  if (htmlBlockMatch) {
-    finalHtml = htmlBlockMatch[1].trim()
-  } else if (/^<!DOCTYPE\s+html/i.test(trimmed) || /^<html[\s>]/i.test(trimmed)) {
-    finalHtml = trimmed
-  } else {
-    const withMarkdown = content
-      .replace(/```(\w*)\n([\s\S]*?)```/g, (_: string, lang: string, code: string) => `<pre><code>${code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`)
-      .replace(/`([^`]+)`/g, (_: string, code: string) => `<code>${code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`)
-      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    const rendered = renderMathInText(withMarkdown)
-      .replace(/\n\n+/g, '</p><p>')
-      .replace(/\n/g, '<br>')
-    const bodyContent = rendered.startsWith('<') ? rendered : `<p>${rendered}</p>`
-    finalHtml = `<!DOCTYPE html>
+  const bodyContent = html.trim().startsWith('<') ? html.trim() : `<p>${html}</p>`
+  const finalHtml = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.1/dist/katex.min.css">
 <style>
@@ -197,7 +158,6 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
   hr{border:none;border-top:1px solid #ddd;margin:1em 0}
   a{color:#2563eb;text-decoration:none}
 </style></head><body>${bodyContent}</body></html>`
-  }
 
   const tmpPdf = path.join(os.tmpdir(), `omniroute-pdf-${Date.now()}.pdf`)
 
