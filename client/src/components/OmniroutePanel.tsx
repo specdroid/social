@@ -605,7 +605,7 @@ export function OmniroutePanel() {
                   </div>
                 )}
                 <MessageContent content={msg.content} isUser={msg.role === 'user'} />
-                <div className={`flex gap-1 mt-2 ${msg.role === 'user' ? 'justify-start' : 'justify-start'}`}>
+                <div className="flex gap-1 mt-2">
                   {msg.role === 'user' ? (
                     <>
                       <button onClick={async (e) => {
@@ -613,8 +613,6 @@ export function OmniroutePanel() {
                         const text = typeof msg.content === 'string' ? msg.content : ''
                         try {
                           await navigator.clipboard.writeText(text)
-                          setCopiedIdx(i)
-                          setTimeout(() => setCopiedIdx(null), 1500)
                         } catch {
                           const ta = document.createElement('textarea')
                           ta.value = text
@@ -625,29 +623,29 @@ export function OmniroutePanel() {
                           ta.select()
                           document.execCommand('copy')
                           document.body.removeChild(ta)
-                          setCopiedIdx(i)
-                          setTimeout(() => setCopiedIdx(null), 1500)
                         }
-                      }} className={`text-[10px] px-1.5 py-0.5 rounded transition-colors flex items-center gap-0.5 opacity-0 group-hover:opacity-100 ${copiedIdx === i ? 'bg-green-600/30 text-green-300' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50'}`} title="Copy prompt">
-                        {copiedIdx === i ? <><Check className="w-3 h-3" /> Copied</> : <Copy className="w-3 h-3" />}
+                        setCopiedIdx(i)
+                        setTimeout(() => setCopiedIdx(null), 1500)
+                      }} className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 ${copiedIdx === i ? 'bg-green-600/30 text-green-300' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50'}`} title="Copy prompt">
+                        {copiedIdx === i ? <><Check className="w-3 h-3" />Copied</> : <Copy className="w-3 h-3" />}
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); exportAsHtml(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors flex items-center gap-0.5 opacity-0 group-hover:opacity-100" title="View as HTML">
+                      <button onClick={(e) => { e.stopPropagation(); exportAsHtml(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50 flex items-center gap-0.5" title="View as HTML">
                         <FileCode className="w-3 h-3" />
                       </button>
                     </>
                   ) : (
                     <>
-                      <button onClick={(e) => { e.stopPropagation(); exportAsHtml(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors flex items-center gap-0.5 opacity-0 group-hover:opacity-100" title="View as HTML">
-                        <FileCode className="w-3 h-3" /> HTML
+                      <button onClick={(e) => { e.stopPropagation(); exportAsHtml(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50 flex items-center gap-0.5" title="View as HTML">
+                        <FileCode className="w-3 h-3" />HTML
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); exportAsPdf(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors flex items-center gap-0.5 opacity-0 group-hover:opacity-100" title="Save as PDF">
-                        <FileText className="w-3 h-3" /> PDF
+                      <button onClick={(e) => { e.stopPropagation(); exportAsPdf(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50 flex items-center gap-0.5" title="Save as PDF">
+                        <FileText className="w-3 h-3" />PDF
                       </button>
                     </>
                   )}
                   <button
                     onClick={(e) => { e.stopPropagation(); handleRemoveMessage(i) }}
-                    className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-700/50 transition-colors opacity-0 group-hover:opacity-100"
+                    className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-700/50"
                     title="Remove message"
                   >
                     <X className="w-3 h-3" />
