@@ -629,14 +629,35 @@ export function OmniroutePanel() {
                        }} className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 ${copiedIdx === i ? 'bg-green-600/30 text-green-300' : 'text-white/80 hover:text-white hover:bg-black/20'}`} title="Copy prompt">
                         {copiedIdx === i ? <><Check className="w-3 h-3" />Copied</> : <Copy className="w-3 h-3" />}
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); exportAsHtml(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-white/80 hover:text-white hover:bg-black/20 flex items-center gap-0.5" title="View as HTML">
+                      <button onClick={(e) => { e.stopPropagation(); exportAsHtml(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-white/80 hover:text-white hover:bg-black/20 flex items-center gap-0.5" title="View as Raw HTML">
                         <FileCode className="w-3 h-3" />
                       </button>
                     </>
                   ) : (
                     <>
-                      <button onClick={(e) => { e.stopPropagation(); exportAsHtml(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-white/80 hover:text-white hover:bg-black/20 flex items-center gap-0.5" title="View as HTML">
-                        <FileCode className="w-3 h-3" />HTML
+                      <button onClick={async (e) => {
+                        e.stopPropagation()
+                        const text = typeof msg.content === 'string' ? msg.content : ''
+                        try {
+                          await navigator.clipboard.writeText(text)
+                        } catch {
+                          const ta = document.createElement('textarea')
+                          ta.value = text
+                          ta.style.position = 'fixed'
+                          ta.style.top = '0'
+                          ta.style.opacity = '0'
+                          document.body.appendChild(ta)
+                          ta.select()
+                          document.execCommand('copy')
+                          document.body.removeChild(ta)
+                        }
+                        setCopiedIdx(i)
+                        setTimeout(() => setCopiedIdx(null), 1500)
+                       }} className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 ${copiedIdx === i ? 'bg-green-600/30 text-green-300' : 'text-white/80 hover:text-white hover:bg-black/20'}`} title="Copy prompt">
+                        {copiedIdx === i ? <><Check className="w-3 h-3" />Copied</> : <Copy className="w-3 h-3" />}
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); exportAsHtml(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-white/80 hover:text-white hover:bg-black/20 flex items-center gap-0.5" title="View as Raw HTML">
+                        <FileCode className="w-3 h-3" />
                       </button>
                       <button onClick={(e) => { e.stopPropagation(); exportAsPdf(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-white/80 hover:text-white hover:bg-black/20 flex items-center gap-0.5" title="Save as PDF">
                         <FileText className="w-3 h-3" />PDF

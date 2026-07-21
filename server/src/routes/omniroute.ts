@@ -157,23 +157,41 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
   }
 
   const escaped = escapeHtml(content)
-  const rendered = renderMathInText(escaped)
+  const withMarkdown = escaped
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+  const rendered = renderMathInText(withMarkdown)
+    .replace(/\n\n+/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+  const bodyContent = rendered.startsWith('<') ? rendered : `<p>${rendered}</p>`
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.1/dist/katex.min.css">
 <style>
-  body{font-family:Georgia,serif;max-width:210mm;margin:0 auto;padding:20mm 15mm;line-height:1.8;font-size:12pt;color:#1a1a2e}
+  @page{margin:20mm 15mm}
+  body{font-family:Georgia,'Times New Roman',serif;max-width:210mm;margin:0 auto;line-height:1.8;font-size:12pt;color:#1a1a2e;orphans:3;widows:3}
   img{max-width:100%}
-  .katex{font-size:1.1em}
-  code{background:#f1f1f1;padding:0.15em 0.3em;border-radius:3px;font-size:0.9em;font-family:monospace}
-  pre{background:#f5f5f5;padding:0.8rem 1rem;border-radius:6px;overflow-x:auto;page-break-inside:avoid}
-  pre code{background:none;padding:0}
-  table{border-collapse:collapse;width:100%;page-break-inside:avoid}
-  td,th{border:1px solid #ccc;padding:6px 10px;text-align:left}
-  th{background:#f0f0f0}
-  h1,h2,h3,h4{page-break-after:avoid;color:#111}
-  p,li{page-break-inside:avoid}
-</style></head><body>${rendered}</body></html>`
+  .katex{font-size:1.05em}
+  code{background:#f1f1f1;padding:0.15em 0.3em;border-radius:2px;font-size:0.85em;font-family:'SFMono-Regular',Consolas,monospace;word-break:break-word}
+  pre{background:#f5f5f5;padding:0.7rem 0.9rem;border-radius:4px;overflow-x:auto;page-break-inside:avoid;border:1px solid #e0e0e0}
+  pre code{background:none;padding:0;font-size:0.8em;line-height:1.5}
+  table{border-collapse:collapse;width:100%;page-break-inside:avoid;margin:0.5em 0}
+  td,th{border:1px solid #bbb;padding:5px 8px;text-align:left}
+  th{background:#eee;font-weight:600}
+  h1,h2,h3,h4{page-break-after:avoid;color:#111;line-height:1.3;margin-top:1.2em;margin-bottom:0.4em}
+  h1{font-size:1.6em;border-bottom:1px solid #ddd;padding-bottom:0.2em}
+  h2{font-size:1.3em}
+  h3{font-size:1.1em}
+  p{page-break-inside:avoid;margin:0 0 0.6em 0}
+  ul,ol{page-break-inside:avoid;margin:0.3em 0;padding-left:1.5em}
+  li{margin-bottom:0.2em}
+  blockquote{border-left:3px solid #ccc;margin:0.5em 0;padding:0.2em 0.8em;color:#555;font-style:italic}
+  hr{border:none;border-top:1px solid #ddd;margin:1em 0}
+  a{color:#2563eb;text-decoration:none}
+</style></head><body>${bodyContent}</body></html>`
 
   const tmpPdf = path.join(os.tmpdir(), `omniroute-pdf-${Date.now()}.pdf`)
 
