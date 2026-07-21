@@ -168,7 +168,7 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
     .replace(/\n/g, '<br>')
   const bodyContent = rendered.startsWith('<') ? rendered : `<p>${rendered}</p>`
   console.log('PDF bodyContent first 500 chars:', JSON.stringify(bodyContent.substring(0, 500)))
-  const html = `<!DOCTYPE html>
+  const fullHtml = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.1/dist/katex.min.css">
 <style>
@@ -203,7 +203,7 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     })
     const page = await browser.newPage()
-    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 30000 })
+    await page.setContent(fullHtml, { waitUntil: 'domcontentloaded', timeout: 30000 })
     await page.pdf({ path: tmpPdf, format: 'A4', printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } })
 
     if (!fs.existsSync(tmpPdf)) throw new Error('PDF file was not created by Playwright')
