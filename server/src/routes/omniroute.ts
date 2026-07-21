@@ -174,17 +174,16 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
   const tmpPdf = path.join(os.tmpdir(), `omniroute-pdf-${Date.now()}.pdf`)
 
   try {
-    fs.writeFileSync(tmpFile, html, 'utf-8')
-
     const browser = await chromium.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     })
     const page = await browser.newPage()
-    await page.goto(`file://${tmpFile}`, { waitUntil: 'networkidle', timeout: 30000 })
+    await page.setContent(html, { waitUntil: 'networkidle' })
     await page.pdf({ path: tmpPdf, format: 'A4', printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } })
     await browser.close()
 
+    if (!fs.existsSync(tmpPdf)) throw new Error('PDF file was not created by Playwright')
     const stat = fs.statSync(tmpPdf)
     if (stat.size === 0) throw new Error('Generated PDF is empty')
 
