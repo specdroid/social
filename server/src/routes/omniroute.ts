@@ -152,14 +152,9 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
   const { content } = req.body
   if (!content || typeof content !== 'string') throw new AppError(400, 'content is required')
 
-  function escapeHtml(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;')
-  }
-
-  const escaped = escapeHtml(content)
-  const withMarkdown = escaped
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
+  const withMarkdown = content
+    .replace(/```(\w*)\n([\s\S]*?)```/g, (_: string, lang: string, code: string) => `<pre><code>${code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`)
+    .replace(/`([^`]+)`/g, (_: string, code: string) => `<code>${code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`)
     .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
