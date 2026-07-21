@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Brain, Send, Check, X, Eye, EyeOff, Loader2, MessageSquare, Plus, Trash2, Key, Paperclip, Copy, FileCode, FileText, Square } from 'lucide-react'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
@@ -70,7 +70,6 @@ async function exportAsPdf(content: string) {
     const pdfW = pdf.internal.pageSize.getWidth()
     const pdfH = pdf.internal.pageSize.getHeight()
     const imgW = pdfW
-    const imgH = (canvas.height * pdfW) / canvas.width
     const pageH = (pdfH * canvas.width) / pdfW
     for (let y = 0; y < canvas.height; y += pageH) {
       if (y > 0) pdf.addPage()
