@@ -50,10 +50,14 @@ function renderMathInText(text: string): string {
 }
 
 function extractHtmlContent(text: string): string {
+  const bodyMatch = text.match(/<body[^>]*>([\s\S]*)<\/body>/i)
+  if (bodyMatch) return bodyMatch[1]
   const start = text.indexOf('<html')
   const end = text.lastIndexOf('</html>')
   if (start !== -1 && end !== -1) {
-    return text.slice(start, end + '</html>'.length)
+    const inner = text.slice(start, end + '</html>'.length)
+    const innerBody = inner.match(/<body[^>]*>([\s\S]*)<\/body>/i)
+    return innerBody ? innerBody[1] : inner.replace(/<html[^>]*>|<\/html>|<head>[\s\S]*?<\/head>|<body[^>]*>|<\/body>/gi, '')
   }
   return text
 }
@@ -61,7 +65,7 @@ function extractHtmlContent(text: string): string {
 function exportAsHtml(content: string) {
   const cleaned = extractHtmlContent(content)
   const rendered = renderMathInText(cleaned)
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Omniroute Response</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:0 auto;padding:2rem;line-height:1.6;color:#1a1a2e}img{max-width:100%}.katex{font-size:1.05em}code{background:#f1f1f1;padding:0.2em 0.4em;border-radius:3px;font-size:0.9em}pre{background:#f5f5f5;padding:1rem;border-radius:8px;overflow-x:auto}pre code{background:none;padding:0}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px;text-align:left}</style></head><body>${rendered}</body></html>`
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Omniroute Response</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:0 auto;padding:2rem;line-height:1.6;background:#1a1a2e;color:#e4e4e7}img{max-width:100%}.katex{font-size:1.05em}code{background:#27272a;padding:0.2em 0.4em;border-radius:3px;font-size:0.9em}a{color:#60a5fa}.rendered-html,.rendered-html *{background:transparent;color:inherit}</style></head><body class="rendered-html">${rendered}</body></html>`
   const w = window.open('', '_blank')
   if (w) { w.document.write(html); w.document.close() }
 }
@@ -95,6 +99,19 @@ async function exportAsPdf(content: string) {
 }
 
 function MessageContent({ content, isUser }: { content: string; isUser?: boolean }) {
+  const isDoc = /<html[\s>]/i.test(content) || /^<!DOCTYPE\s+html/i.test(content.trim())
+  if (isDoc) {
+    const bodyMatch = content.match(/<body[^>]*>([\s\S]*)<\/body>/i)
+    const inner = bodyMatch ? bodyMatch[1] : content.replace(/<html[^>]*>|<\/html>|<head>[\s\S]*?<\/head>|<body[^>]*>|<\/body>/gi, '')
+    const html = renderMathInText(inner)
+    return (
+      <span className={`block ${isUser ? 'text-white' : 'text-zinc-100'}`} style={{ color: isUser ? '#fff' : '#e4e4e7' }}>
+        <style>{`.rendered-html,.rendered-html *{background:transparent!important;color:inherit!important}.rendered-html pre,.rendered-html code{background:#27272a!important}.rendered-html a{color:#60a5fa!important}.rendered-html img,.rendered-html svg,.rendered-html video,.rendered-html canvas{max-width:100%;height:auto}`}</style>
+        <span className="text-[10px] opacity-40 mb-1 block">HTML Document</span>
+        <div className="rendered-html" dangerouslySetInnerHTML={{ __html: html }} />
+      </span>
+    )
+  }
   const html = useMemo(() => renderMathInText(content), [content])
   const hasMath = html.includes('katex')
   if (!hasMath) return <span className="whitespace-pre-wrap">{content}</span>
@@ -639,28 +656,9 @@ export function OmniroutePanel() {
                     <span className="opacity-60">{formatSize(msg.attachment.size)}</span>
                   </div>
                 )}
-                {editingIdx === i ? (
-                  <textarea
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-100 resize-y min-h-[80px] font-mono"
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Escape') handleCancelEdit(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSaveEdit(i) } }}
-                    autoFocus
-                  />
-                ) : (
-                  <MessageContent content={msg.content} isUser={msg.role === 'user'} />
-                )}
+                <MessageContent content={msg.content} isUser={msg.role === 'user'} />
                 <div className="flex gap-1 mt-2">
-                  {editingIdx === i ? (
-                    <>
-                      <button onClick={() => handleSaveEdit(i)} className="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 bg-green-600/30 text-green-300 hover:bg-green-600/50" title="Save (Ctrl+Enter)">
-                        <Check className="w-3 h-3" />Save
-                      </button>
-                      <button onClick={handleCancelEdit} className="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 text-white/80 hover:text-white hover:bg-black/20" title="Cancel (Esc)">
-                        <X className="w-3 h-3" />Cancel
-                      </button>
-                    </>
-                  ) : msg.role === 'user' ? (
+                  {msg.role === 'user' ? (
                     <>
                       <button onClick={async (e) => {
                         e.stopPropagation()
@@ -804,6 +802,34 @@ export function OmniroutePanel() {
           The AI will use the system prompt and model configured above when responding to WhatsApp messages. Keys are rotated automatically.
         </p>
       </div>
+
+      {editingIdx !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={handleCancelEdit}>
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-[90vw] h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700">
+              <span className="text-sm font-medium text-zinc-200">Edit Message</span>
+              <button onClick={handleCancelEdit} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-400 hover:text-white hover:bg-black/20">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <textarea
+              className="flex-1 bg-zinc-950 border-0 p-4 text-sm text-zinc-100 font-mono resize-none outline-none"
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') handleCancelEdit(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSaveEdit(editingIdx) } }}
+              autoFocus
+            />
+            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-zinc-700">
+              <button onClick={handleCancelEdit} className="text-xs px-3 py-1.5 rounded text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
+                Cancel (Esc)
+              </button>
+              <button onClick={() => handleSaveEdit(editingIdx)} className="text-xs px-3 py-1.5 rounded bg-green-600 text-white hover:bg-green-500 transition-colors flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5" /> Save (Ctrl+Enter)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
