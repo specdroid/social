@@ -70,7 +70,12 @@ async function exportAsPdf(content: string) {
     }
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
-    window.open(url, '_blank')
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'omniroute-response.pdf'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
     setTimeout(() => URL.revokeObjectURL(url), 60000)
   } catch (e: any) {
     alert('PDF export failed: ' + e.message + '\nTry using HTML view instead.')
