@@ -152,23 +152,27 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
   const { content } = req.body
   if (!content || typeof content !== 'string') throw new AppError(400, 'content is required')
 
-  console.log('PDF content length:', content.length)
-  console.log('PDF content first 500 chars:', JSON.stringify(content.substring(0, 500)))
-  console.log('PDF content has &lt;:', content.includes('&lt;'))
-  console.log('PDF content has <:', content.includes('<'))
+  const trimmed = content.trim()
 
-  const withMarkdown = content
-    .replace(/```(\w*)\n([\s\S]*?)```/g, (_: string, lang: string, code: string) => `<pre><code>${code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`)
-    .replace(/`([^`]+)`/g, (_: string, code: string) => `<code>${code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`)
-    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-  const rendered = renderMathInText(withMarkdown)
-    .replace(/\n\n+/g, '</p><p>')
-    .replace(/\n/g, '<br>')
-  const bodyContent = rendered.startsWith('<') ? rendered : `<p>${rendered}</p>`
-  console.log('PDF bodyContent first 500 chars:', JSON.stringify(bodyContent.substring(0, 500)))
-  const fullHtml = `<!DOCTYPE html>
+  let finalHtml: string
+
+  const htmlBlockMatch = trimmed.match(/^```(?:html|HTML)\s*\n([\s\S]*?)```\s*$/)
+  if (htmlBlockMatch) {
+    finalHtml = htmlBlockMatch[1].trim()
+  } else if (/^<!DOCTYPE\s+html/i.test(trimmed) || /^<html[\s>]/i.test(trimmed)) {
+    finalHtml = trimmed
+  } else {
+    const withMarkdown = content
+      .replace(/```(\w*)\n([\s\S]*?)```/g, (_: string, lang: string, code: string) => `<pre><code>${code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`)
+      .replace(/`([^`]+)`/g, (_: string, code: string) => `<code>${code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`)
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    const rendered = renderMathInText(withMarkdown)
+      .replace(/\n\n+/g, '</p><p>')
+      .replace(/\n/g, '<br>')
+    const bodyContent = rendered.startsWith('<') ? rendered : `<p>${rendered}</p>`
+    finalHtml = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.1/dist/katex.min.css">
 <style>
@@ -193,6 +197,7 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
   hr{border:none;border-top:1px solid #ddd;margin:1em 0}
   a{color:#2563eb;text-decoration:none}
 </style></head><body>${bodyContent}</body></html>`
+  }
 
   const tmpPdf = path.join(os.tmpdir(), `omniroute-pdf-${Date.now()}.pdf`)
 
@@ -203,7 +208,7 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     })
     const page = await browser.newPage()
-    await page.setContent(fullHtml, { waitUntil: 'domcontentloaded', timeout: 30000 })
+    await page.setContent(finalHtml, { waitUntil: 'domcontentloaded', timeout: 30000 })
     await page.pdf({ path: tmpPdf, format: 'A4', printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } })
 
     if (!fs.existsSync(tmpPdf)) throw new Error('PDF file was not created by Playwright')
