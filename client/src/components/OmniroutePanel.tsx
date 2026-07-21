@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Brain, Send, Check, X, Eye, EyeOff, Loader2, MessageSquare, Plus, Trash2, Key, Paperclip, Copy, FileCode, FileText, Square } from 'lucide-react'
+import { Brain, Send, Check, X, Eye, EyeOff, Loader2, MessageSquare, Plus, Trash2, Key, Paperclip, Copy, FileCode, FileText, Square, Edit } from 'lucide-react'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import * as pdfjsLib from 'pdfjs-dist'
@@ -49,8 +49,18 @@ function renderMathInText(text: string): string {
   return result
 }
 
+function extractHtmlContent(text: string): string {
+  const start = text.indexOf('<html')
+  const end = text.lastIndexOf('</html>')
+  if (start !== -1 && end !== -1) {
+    return text.slice(start, end + '</html>'.length)
+  }
+  return text
+}
+
 function exportAsHtml(content: string) {
-  const rendered = renderMathInText(content)
+  const cleaned = extractHtmlContent(content)
+  const rendered = renderMathInText(cleaned)
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Omniroute Response</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:0 auto;padding:2rem;line-height:1.6;color:#1a1a2e}img{max-width:100%}.katex{font-size:1.05em}code{background:#f1f1f1;padding:0.2em 0.4em;border-radius:3px;font-size:0.9em}pre{background:#f5f5f5;padding:1rem;border-radius:8px;overflow-x:auto}pre code{background:none;padding:0}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px;text-align:left}</style></head><body>${rendered}</body></html>`
   const w = window.open('', '_blank')
   if (w) { w.document.write(html); w.document.close() }
@@ -58,7 +68,8 @@ function exportAsHtml(content: string) {
 
 async function exportAsPdf(content: string) {
   try {
-    const rendered = renderMathInText(content)
+    const cleaned = extractHtmlContent(content)
+    const rendered = renderMathInText(cleaned)
     const token = localStorage.getItem('token')
     const res = await fetch('/api/omniroute/export/pdf', {
       method: 'POST',
@@ -129,6 +140,8 @@ export function OmniroutePanel() {
   const [sending, setSending] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
+  const [editingIdx, setEditingIdx] = useState<number | null>(null)
+  const [editContent, setEditContent] = useState('')
   const [pendingFile, setPendingFile] = useState<{ name: string; type: string; size: number; base64: string } | null>(null)
   const chatEnd = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -397,6 +410,22 @@ export function OmniroutePanel() {
     setMessages(prev => prev.filter((_, i) => i !== index))
   }
 
+  function handleStartEdit(index: number) {
+    setEditingIdx(index)
+    setEditContent(messages[index].content)
+  }
+
+  function handleSaveEdit(index: number) {
+    setMessages(prev => prev.map((msg, i) => i === index ? { ...msg, content: editContent } : msg))
+    setEditingIdx(null)
+    setEditContent('')
+  }
+
+  function handleCancelEdit() {
+    setEditingIdx(null)
+    setEditContent('')
+  }
+
   function handleStop() {
     abortRef.current?.abort()
     abortRef.current = null
@@ -610,9 +639,28 @@ export function OmniroutePanel() {
                     <span className="opacity-60">{formatSize(msg.attachment.size)}</span>
                   </div>
                 )}
-                <MessageContent content={msg.content} isUser={msg.role === 'user'} />
+                {editingIdx === i ? (
+                  <textarea
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-100 resize-y min-h-[80px] font-mono"
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Escape') handleCancelEdit(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSaveEdit(i) } }}
+                    autoFocus
+                  />
+                ) : (
+                  <MessageContent content={msg.content} isUser={msg.role === 'user'} />
+                )}
                 <div className="flex gap-1 mt-2">
-                  {msg.role === 'user' ? (
+                  {editingIdx === i ? (
+                    <>
+                      <button onClick={() => handleSaveEdit(i)} className="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 bg-green-600/30 text-green-300 hover:bg-green-600/50" title="Save (Ctrl+Enter)">
+                        <Check className="w-3 h-3" />Save
+                      </button>
+                      <button onClick={handleCancelEdit} className="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 text-white/80 hover:text-white hover:bg-black/20" title="Cancel (Esc)">
+                        <X className="w-3 h-3" />Cancel
+                      </button>
+                    </>
+                  ) : msg.role === 'user' ? (
                     <>
                       <button onClick={async (e) => {
                         e.stopPropagation()
@@ -641,6 +689,9 @@ export function OmniroutePanel() {
                     </>
                   ) : (
                     <>
+                      <button onClick={(e) => { e.stopPropagation(); handleStartEdit(i) }} className="text-[10px] px-1.5 py-0.5 rounded text-white/80 hover:text-white hover:bg-black/20 flex items-center gap-0.5" title="Edit">
+                        <Edit className="w-3 h-3" />
+                      </button>
                       <button onClick={async (e) => {
                         e.stopPropagation()
                         const text = typeof msg.content === 'string' ? msg.content : ''
