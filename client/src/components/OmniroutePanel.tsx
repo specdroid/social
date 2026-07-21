@@ -73,12 +73,11 @@ function exportAsHtml(content: string) {
 async function exportAsPdf(content: string) {
   try {
     const cleaned = extractHtmlContent(content)
-    const rendered = renderMathInText(cleaned)
     const token = localStorage.getItem('token')
     const res = await fetch('/api/omniroute/export/pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ html: rendered }),
+      body: JSON.stringify({ content: cleaned }),
     })
     if (!res.ok) {
       const err = await res.text().catch(() => 'Unknown error')
