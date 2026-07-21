@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Brain, Send, Check, X, Eye, EyeOff, Loader2, MessageSquare, Plus, Trash2, Key, Paperclip } from 'lucide-react'
+import { Brain, Send, Check, X, Eye, EyeOff, Loader2, MessageSquare, Plus, Trash2, Key, Paperclip, Copy, FileCode, FileText } from 'lucide-react'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import * as pdfjsLib from 'pdfjs-dist'
@@ -47,6 +47,20 @@ function renderMathInText(text: string): string {
     catch { return `<code>${math}</code>` }
   })
   return result
+}
+
+function exportAsHtml(content: string) {
+  const rendered = renderMathInText(content)
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Omniroute Response</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:0 auto;padding:2rem;line-height:1.6;color:#1a1a2e}img{max-width:100%}.katex{font-size:1.05em}code{background:#f1f1f1;padding:0.2em 0.4em;border-radius:3px;font-size:0.9em}pre{background:#f5f5f5;padding:1rem;border-radius:8px;overflow-x:auto}pre code{background:none;padding:0}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px;text-align:left}</style></head><body>${rendered}</body></html>`
+  const w = window.open('', '_blank')
+  if (w) { w.document.write(html); w.document.close() }
+}
+
+function exportAsPdf(content: string) {
+  const rendered = renderMathInText(content)
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Omniroute Response</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:0 auto;padding:2rem;line-height:1.6;color:#1a1a2e}img{max-width:100%}.katex{font-size:1.05em}code{background:#f1f1f1;padding:0.2em 0.4em;border-radius:3px;font-size:0.9em}pre{background:#f5f5f5;padding:1rem;border-radius:8px;overflow-x:auto}pre code{background:none;padding:0}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px;text-align:left}@media print{body{padding:1cm}}</style></head><body>${rendered}<script>window.onload=function(){window.print()}<\/script></body></html>`
+  const w = window.open('', '_blank')
+  if (w) { w.document.write(html); w.document.close() }
 }
 
 function MessageContent({ content }: { content: string }) {
@@ -555,6 +569,22 @@ export function OmniroutePanel() {
                   </div>
                 )}
                 <MessageContent content={msg.content} />
+                <div className={`flex gap-1 mt-1.5 ${msg.role === 'user' ? 'justify-start' : 'justify-start'}`}>
+                  {msg.role === 'user' ? (
+                    <button onClick={() => { navigator.clipboard.writeText(typeof msg.content === 'string' ? msg.content : '') }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors" title="Copy prompt">
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  ) : (
+                    <>
+                      <button onClick={() => exportAsHtml(msg.content)} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors flex items-center gap-0.5" title="View as HTML">
+                        <FileCode className="w-3 h-3" /> HTML
+                      </button>
+                      <button onClick={() => exportAsPdf(msg.content)} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors flex items-center gap-0.5" title="Save as PDF">
+                        <FileText className="w-3 h-3" /> PDF
+                      </button>
+                    </>
+                  )}
+                </div>
                 <button
                   onClick={() => handleRemoveMessage(i)}
                   className="absolute -top-2 -right-2 w-5 h-5 bg-zinc-700 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
