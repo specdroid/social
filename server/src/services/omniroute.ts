@@ -101,3 +101,28 @@ export async function chatCompletion(messages: { role: string; content: string }
   const data = JSON.parse(resText) as any
   return data.choices?.[0]?.message?.content || ''
 }
+
+export async function listChats(userId: string) {
+  return prisma.omnirouteChat.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' } })
+}
+
+export async function getChat(id: string, userId: string) {
+  return prisma.omnirouteChat.findFirst({ where: { id, userId } })
+}
+
+export async function createChat(userId: string, title: string, messages: any[]) {
+  return prisma.omnirouteChat.create({ data: { userId, title: title || 'New Chat', messages: JSON.stringify(messages) } })
+}
+
+export async function updateChat(id: string, userId: string, data: { title?: string; messages?: any[] }) {
+  const update: any = {}
+  if (data.title !== undefined) update.title = data.title
+  if (data.messages !== undefined) update.messages = JSON.stringify(data.messages)
+  const chat = await prisma.omnirouteChat.findFirst({ where: { id, userId } })
+  if (!chat) throw new Error('Chat not found')
+  return prisma.omnirouteChat.update({ where: { id }, data: update })
+}
+
+export async function deleteChat(id: string, userId: string) {
+  return prisma.omnirouteChat.deleteMany({ where: { id, userId } })
+}

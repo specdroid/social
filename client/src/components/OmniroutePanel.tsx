@@ -34,7 +34,15 @@ function renderMathInText(text: string): string {
     try { return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false }) }
     catch { return `<code>${math}</code>` }
   })
+  result = result.replace(/\\\[(.+?)\\\]/gs, (_, math) => {
+    try { return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false }) }
+    catch { return `<code>${math}</code>` }
+  })
   result = result.replace(/\$([^\n$]+?)\$/g, (_, math) => {
+    try { return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false }) }
+    catch { return `<code>${math}</code>` }
+  })
+  result = result.replace(/\\\((.+?)\\\)/gs, (_, math) => {
     try { return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false }) }
     catch { return `<code>${math}</code>` }
   })
@@ -64,7 +72,7 @@ function formatSize(bytes: number) {
 }
 
 export function OmniroutePanel() {
-  const { get, post, postAi, put } = useApi()
+  const { get, post, postAi, put, del } = useApi()
   const [config, setConfig] = useState<Config | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -89,14 +97,27 @@ export function OmniroutePanel() {
   const chatEnd = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [chats, setChats] = useState<{ id: string; title: string; updatedAt: string }[]>([])
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null)
+
   useEffect(() => {
     loadConfig()
     loadKeys()
+    loadChats()
   }, [])
 
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  async function saveMessages(msgs: ChatMessage[]) {
+    if (!msgs.length || !currentChatId) return
+    try {
+      const title = msgs[0]?.content?.slice(0, 50) || 'Chat'
+      await put(`/api/omniroute/chats/${currentChatId}`, { messages: msgs.map(m => ({ role: m.role, content: m.content })), title })
+      loadChats()
+    } catch {}
+  }
 
   async function loadConfig() {
     try {
@@ -108,6 +129,36 @@ export function OmniroutePanel() {
         setSystemPrompt(data.systemPrompt)
       }
     } catch { }
+  }
+
+  async function loadChats() {
+    try {
+      const data = await get<{ chats: { id: string; title: string; updatedAt: string }[] }>('/api/omniroute/chats')
+      setChats(data.chats || [])
+    } catch {}
+  }
+
+  async function handleNewChat() {
+    setCurrentChatId(null)
+    setMessages([])
+  }
+
+  async function handleSelectChat(chatId: string) {
+    try {
+      const data = await get<{ id: string; title: string; messages: ChatMessage[] }>(`/api/omniroute/chats/${chatId}`)
+      if (data) {
+        setCurrentChatId(data.id)
+        setMessages(data.messages)
+      }
+    } catch {}
+  }
+
+  async function handleDeleteChat(chatId: string) {
+    try {
+      await del(`/api/omniroute/chats/${chatId}`)
+      if (currentChatId === chatId) { setCurrentChatId(null); setMessages([]) }
+      loadChats()
+    } catch {}
   }
 
   async function loadKeys() {
@@ -251,18 +302,39 @@ export function OmniroutePanel() {
     }
 
     const userMsg: ChatMessage = { role: 'user', content: typeof content === 'string' ? content : text || `[File: ${pendingFile!.name}]`, attachment }
-    setMessages(prev => [...prev, userMsg])
+    const newMessages = [...messages, userMsg]
+    setMessages(newMessages)
     setChatInput('')
     setPendingFile(null)
     setSending(true)
 
+    let chatId = currentChatId
+    if (!chatId) {
+      try {
+        const created = await post<{ id: string }>('/api/omniroute/chats', { messages: newMessages.map(m => ({ role: m.role, content: m.content })) })
+        chatId = created.id
+        setCurrentChatId(chatId)
+        loadChats()
+      } catch {}
+    }
+
     try {
-      const apiMessages: Array<{ role: string; content: any }> = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
+      const apiMessages: Array<{ role: string; content: any }> = newMessages.map(m => ({ role: m.role, content: m.content }))
       if (pendingFile && typeof content !== 'string') {
         apiMessages[apiMessages.length - 1].content = content
       }
       const data = await postAi<{ reply: string }>('/api/omniroute/chat', { messages: apiMessages })
-      if (data) setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
+      if (data) {
+        const finalMessages = [...newMessages, { role: 'assistant' as const, content: data.reply }]
+        setMessages(finalMessages)
+        if (chatId) {
+          try {
+            const title = newMessages[0]?.content?.slice(0, 50) || 'Chat'
+            await put(`/api/omniroute/chats/${chatId}`, { messages: finalMessages.map(m => ({ role: m.role, content: m.content })), title })
+            loadChats()
+          } catch {}
+        }
+      }
     } catch (e: any) {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${e.message}` }])
     } finally {
@@ -452,7 +524,26 @@ export function OmniroutePanel() {
 
       {/* ── Chat Section ── */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-4">
-        <h3 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">Chat</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">Chat</h3>
+          <button onClick={handleNewChat} className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 text-zinc-300 rounded-lg text-xs font-medium hover:bg-zinc-700 transition-colors">
+            <Plus className="w-3.5 h-3.5" />
+            New Chat
+          </button>
+        </div>
+
+        {chats.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+            {chats.map(c => (
+              <div key={c.id} className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer whitespace-nowrap shrink-0 transition-colors ${currentChatId === c.id ? 'bg-purple-600/20 text-purple-300 border border-purple-600/30' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 border border-transparent'}`}>
+                <span onClick={() => handleSelectChat(c.id)} className="truncate max-w-[120px]">{c.title}</span>
+                <button onClick={(e) => { e.stopPropagation(); handleDeleteChat(c.id) }} className="p-0.5 text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Delete chat">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 h-96 overflow-y-auto space-y-3">
           {messages.length === 0 && (

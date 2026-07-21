@@ -2,7 +2,7 @@ import { Router, Response } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import { AppError } from '../middleware/errorHandler'
-import { getConfig, updateConfig, chatCompletion, getApiKeys, addApiKey, deleteApiKey } from '../services/omniroute'
+import { getConfig, updateConfig, chatCompletion, getApiKeys, addApiKey, deleteApiKey, listChats, getChat, createChat, updateChat, deleteChat } from '../services/omniroute'
 
 const router = Router()
 
@@ -92,6 +92,34 @@ router.get('/status', requireAuth, async (req: AuthRequest, res: Response) => {
   } catch (err: any) {
     res.json({ ok: false, error: err.message })
   }
+})
+
+router.get('/chats', requireAuth, async (req: AuthRequest, res: Response) => {
+  const chats = await listChats(req.userId!)
+  res.json({ chats })
+})
+
+router.post('/chats', requireAuth, async (req: AuthRequest, res: Response) => {
+  const { title, messages } = req.body
+  const chat = await createChat(req.userId!, title, messages || [])
+  res.json({ id: chat.id, title: chat.title, messages: JSON.parse(chat.messages) })
+})
+
+router.get('/chats/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+  const chat = await getChat(req.params.id, req.userId!)
+  if (!chat) throw new AppError(404, 'Chat not found')
+  res.json({ id: chat.id, title: chat.title, messages: JSON.parse(chat.messages) })
+})
+
+router.put('/chats/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+  const { title, messages } = req.body
+  const chat = await updateChat(req.params.id, req.userId!, { title, messages })
+  res.json({ id: chat.id, title: chat.title, messages: JSON.parse(chat.messages) })
+})
+
+router.delete('/chats/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+  await deleteChat(req.params.id, req.userId!)
+  res.json({ ok: true })
 })
 
 export default router
