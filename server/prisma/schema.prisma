@@ -40,6 +40,7 @@ model User {
   facebookPostLogs     FacebookPostLog[]
   omnirouteConfigs     OmnirouteConfig[]
   omnirouteApiKeys      OmnirouteApiKey[]
+  omnirouteChats        OmnirouteChat[]
   telegramSessions     TelegramSession[]
   telegramContacts     TelegramContact[]
   telegramConversations TelegramConversation[]
