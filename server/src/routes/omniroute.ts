@@ -157,8 +157,17 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
   let finalHtml: string
 
   const htmlBlockMatch = trimmed.match(/^```(?:html|HTML)\s*\n([\s\S]*?)```\s*$/)
+  console.log('PDF regex match:', !!htmlBlockMatch)
+  console.log('PDF trimmed starts with ```html:', trimmed.startsWith('```html'))
+  console.log('PDF trimmed ends with ```:', trimmed.endsWith('```'))
+  console.log('PDF trimmed last 200:', JSON.stringify(trimmed.slice(-200)))
+  if (!htmlBlockMatch) {
+    console.log('PDF regex fallback - isRawHtml:', /^<!DOCTYPE\s+html/i.test(trimmed), /^<html[\s>]/i.test(trimmed))
+  }
   if (htmlBlockMatch) {
     finalHtml = htmlBlockMatch[1].trim()
+    console.log('PDF matched html block, extracted length:', finalHtml.length)
+    console.log('PDF extracted html starts with:', JSON.stringify(finalHtml.substring(0, 100)))
   } else if (/^<!DOCTYPE\s+html/i.test(trimmed) || /^<html[\s>]/i.test(trimmed)) {
     finalHtml = trimmed
   } else {
