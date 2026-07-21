@@ -177,29 +177,39 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
 
   const tmpPdf = path.join(os.tmpdir(), `omniroute-pdf-${Date.now()}.pdf`)
 
+  let browser
   try {
-    const browser = await chromium.launch({
+    console.log('PDF: launching chromium...')
+    browser = await chromium.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     })
+    console.log('PDF: launched, creating page...')
     const page = await browser.newPage()
+    console.log('PDF: setting content...')
     await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 30000 })
+    console.log('PDF: content set, generating PDF...')
     await page.pdf({ path: tmpPdf, format: 'A4', printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } })
-    await browser.close()
+    console.log('PDF: generated, checking...')
 
     if (!fs.existsSync(tmpPdf)) throw new Error('PDF file was not created by Playwright')
     const stat = fs.statSync(tmpPdf)
     if (stat.size === 0) throw new Error('Generated PDF is empty')
 
+    console.log('PDF: streaming response, size:', stat.size)
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Disposition', 'attachment; filename="omniroute-response.pdf"')
     res.setHeader('Content-Length', stat.size)
     const readStream = fs.createReadStream(tmpPdf)
     readStream.pipe(res)
+    readStream.on('end', () => console.log('PDF: stream complete'))
+    readStream.on('error', (e) => console.log('PDF: stream error:', e.message))
   } catch (err) {
+    console.log('PDF: caught error:', err instanceof Error ? err.message : 'unknown')
     throw new AppError(500, err instanceof Error ? err.message : 'PDF generation failed')
   } finally {
-    try { fs.unlinkSync(tmpPdf) } catch {}
+    if (browser) { try { await browser.close(); console.log('PDF: browser closed') } catch {} }
+    try { fs.unlinkSync(tmpPdf); console.log('PDF: tmp file cleaned up') } catch {}
   }
 })
 
