@@ -64,18 +64,16 @@ async function exportAsPdf(content: string) {
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({ content }),
     })
-    if (!res.ok) throw new Error('Failed to generate PDF')
+    if (!res.ok) {
+      const err = await res.text().catch(() => 'Unknown error')
+      throw new Error(err || 'Failed to generate PDF')
+    }
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'omniroute-response.pdf'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
   } catch (e: any) {
-    alert('PDF export failed: ' + e.message)
+    alert('PDF export failed: ' + e.message + '\nTry using HTML view instead.')
   }
 }
 
@@ -607,43 +605,52 @@ export function OmniroutePanel() {
                   </div>
                 )}
                 <MessageContent content={msg.content} isUser={msg.role === 'user'} />
-                <div className={`absolute -top-2 right-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
+                <div className={`flex gap-1 mt-2 ${msg.role === 'user' ? 'justify-start' : 'justify-start'}`}>
                   {msg.role === 'user' ? (
-                    <button onClick={async () => {
-                      const text = typeof msg.content === 'string' ? msg.content : ''
-                      try {
-                        await navigator.clipboard.writeText(text)
-                        setCopiedIdx(i)
-                        setTimeout(() => setCopiedIdx(null), 1500)
-                      } catch {
-                        const ta = document.createElement('textarea')
-                        ta.value = text
-                        document.body.appendChild(ta)
-                        ta.select()
-                        document.execCommand('copy')
-                        document.body.removeChild(ta)
-                        setCopiedIdx(i)
-                        setTimeout(() => setCopiedIdx(null), 1500)
-                      }
-                    }} className={`w-5 h-5 flex items-center justify-center rounded-full transition-colors ${copiedIdx === i ? 'bg-green-600 text-white' : 'bg-zinc-700 hover:bg-zinc-600 text-zinc-300'}`} title="Copy prompt">
-                      {copiedIdx === i ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                    </button>
-                  ) : (
                     <>
-                      <button onClick={() => exportAsHtml(msg.content)} className="w-5 h-5 bg-zinc-700 hover:bg-zinc-600 rounded-full flex items-center justify-center text-zinc-300 transition-colors" title="View as HTML">
+                      <button onClick={async (e) => {
+                        e.stopPropagation()
+                        const text = typeof msg.content === 'string' ? msg.content : ''
+                        try {
+                          await navigator.clipboard.writeText(text)
+                          setCopiedIdx(i)
+                          setTimeout(() => setCopiedIdx(null), 1500)
+                        } catch {
+                          const ta = document.createElement('textarea')
+                          ta.value = text
+                          ta.style.position = 'fixed'
+                          ta.style.top = '0'
+                          ta.style.opacity = '0'
+                          document.body.appendChild(ta)
+                          ta.select()
+                          document.execCommand('copy')
+                          document.body.removeChild(ta)
+                          setCopiedIdx(i)
+                          setTimeout(() => setCopiedIdx(null), 1500)
+                        }
+                      }} className={`text-[10px] px-1.5 py-0.5 rounded transition-colors flex items-center gap-0.5 opacity-0 group-hover:opacity-100 ${copiedIdx === i ? 'bg-green-600/30 text-green-300' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50'}`} title="Copy prompt">
+                        {copiedIdx === i ? <><Check className="w-3 h-3" /> Copied</> : <Copy className="w-3 h-3" />}
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); exportAsHtml(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors flex items-center gap-0.5 opacity-0 group-hover:opacity-100" title="View as HTML">
                         <FileCode className="w-3 h-3" />
                       </button>
-                      <button onClick={() => exportAsPdf(msg.content)} className="w-5 h-5 bg-zinc-700 hover:bg-zinc-600 rounded-full flex items-center justify-center text-zinc-300 transition-colors" title="Save as PDF">
-                        <FileText className="w-3 h-3" />
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={(e) => { e.stopPropagation(); exportAsHtml(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors flex items-center gap-0.5 opacity-0 group-hover:opacity-100" title="View as HTML">
+                        <FileCode className="w-3 h-3" /> HTML
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); exportAsPdf(msg.content) }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors flex items-center gap-0.5 opacity-0 group-hover:opacity-100" title="Save as PDF">
+                        <FileText className="w-3 h-3" /> PDF
                       </button>
                     </>
                   )}
                   <button
-                    onClick={() => handleRemoveMessage(i)}
-                    className="w-5 h-5 bg-zinc-700 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors"
+                    onClick={(e) => { e.stopPropagation(); handleRemoveMessage(i) }}
+                    className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-700/50 transition-colors opacity-0 group-hover:opacity-100"
                     title="Remove message"
                   >
-                    <X className="w-3 h-3 text-zinc-300" />
+                    <X className="w-3 h-3" />
                   </button>
                 </div>
               </div>

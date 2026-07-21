@@ -176,16 +176,23 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
   try {
     fs.writeFileSync(tmpFile, html, 'utf-8')
 
-    const browser = await chromium.launch({ headless: true })
+    const browser = await chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    })
     const page = await browser.newPage()
-    await page.goto(`file://${tmpFile}`, { waitUntil: 'networkidle' })
-    await page.pdf({ path: tmpPdf, format: 'A4', printBackground: true, margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' } })
+    await page.goto(`file://${tmpFile}`, { waitUntil: 'networkidle', timeout: 30000 })
+    await page.pdf({ path: tmpPdf, format: 'A4', printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } })
     await browser.close()
+
+    const stat = fs.statSync(tmpPdf)
+    if (stat.size === 0) throw new Error('Generated PDF is empty')
 
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Disposition', 'attachment; filename="omniroute-response.pdf"')
-    const pdfBuf = fs.readFileSync(tmpPdf)
-    res.send(pdfBuf)
+    res.setHeader('Content-Length', stat.size)
+    const readStream = fs.createReadStream(tmpPdf)
+    readStream.pipe(res)
   } finally {
     try { fs.unlinkSync(tmpFile) } catch {}
     try { fs.unlinkSync(tmpPdf) } catch {}
