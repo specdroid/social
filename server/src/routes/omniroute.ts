@@ -106,19 +106,19 @@ router.post('/chats', requireAuth, async (req: AuthRequest, res: Response) => {
 })
 
 router.get('/chats/:id', requireAuth, async (req: AuthRequest, res: Response) => {
-  const chat = await getChat(req.params.id, req.userId!)
+  const chat = await getChat(String(req.params.id), req.userId!)
   if (!chat) throw new AppError(404, 'Chat not found')
   res.json({ id: chat.id, title: chat.title, messages: JSON.parse(chat.messages) })
 })
 
 router.put('/chats/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   const { title, messages } = req.body
-  const chat = await updateChat(req.params.id, req.userId!, { title, messages })
+  const chat = await updateChat(String(req.params.id), req.userId!, { title, messages })
   res.json({ id: chat.id, title: chat.title, messages: JSON.parse(chat.messages) })
 })
 
 router.delete('/chats/:id', requireAuth, async (req: AuthRequest, res: Response) => {
-  await deleteChat(req.params.id, req.userId!)
+  await deleteChat(String(req.params.id), req.userId!)
   res.json({ ok: true })
 })
 
