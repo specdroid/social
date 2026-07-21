@@ -152,6 +152,11 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
   const { content } = req.body
   if (!content || typeof content !== 'string') throw new AppError(400, 'content is required')
 
+  console.log('PDF content length:', content.length)
+  console.log('PDF content first 500 chars:', JSON.stringify(content.substring(0, 500)))
+  console.log('PDF content has &lt;:', content.includes('&lt;'))
+  console.log('PDF content has <:', content.includes('<'))
+
   const withMarkdown = content
     .replace(/```(\w*)\n([\s\S]*?)```/g, (_: string, lang: string, code: string) => `<pre><code>${code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`)
     .replace(/`([^`]+)`/g, (_: string, code: string) => `<code>${code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`)
@@ -162,6 +167,7 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
     .replace(/\n\n+/g, '</p><p>')
     .replace(/\n/g, '<br>')
   const bodyContent = rendered.startsWith('<') ? rendered : `<p>${rendered}</p>`
+  console.log('PDF bodyContent first 500 chars:', JSON.stringify(bodyContent.substring(0, 500)))
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.1/dist/katex.min.css">
