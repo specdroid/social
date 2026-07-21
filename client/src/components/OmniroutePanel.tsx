@@ -4,8 +4,6 @@ import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import * as pdfjsLib from 'pdfjs-dist'
 import { useApi } from '../hooks/useApi'
-import jsPDF from 'jspdf'
-import html2canvas from 'html2canvas'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 
@@ -59,30 +57,25 @@ function exportAsHtml(content: string) {
 }
 
 async function exportAsPdf(content: string) {
-  const container = document.createElement('div')
-  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;padding:40px;background:#fff;font-family:system-ui,sans-serif;line-height:1.8;font-size:14px;color:#1a1a2e;z-index:9999'
-  container.innerHTML = renderMathInText(content)
-  document.body.appendChild(container)
   try {
-    await new Promise(r => setTimeout(r, 300))
-    const canvas = await html2canvas(container, { scale: 2, useCORS: true, logging: false })
-    const pdf = new jsPDF('p', 'mm', 'a4')
-    const pdfW = pdf.internal.pageSize.getWidth()
-    const pdfH = pdf.internal.pageSize.getHeight()
-    const imgW = pdfW
-    const pageH = (pdfH * canvas.width) / pdfW
-    for (let y = 0; y < canvas.height; y += pageH) {
-      if (y > 0) pdf.addPage()
-      const chunk = document.createElement('canvas')
-      chunk.width = canvas.width
-      chunk.height = Math.min(pageH, canvas.height - y)
-      const ctx = chunk.getContext('2d')!
-      ctx.drawImage(canvas, 0, y, canvas.width, chunk.height, 0, 0, chunk.width, chunk.height)
-      pdf.addImage(chunk.toDataURL('image/png'), 'PNG', 0, 0, imgW, (chunk.height * pdfW) / canvas.width)
-    }
-    pdf.save('omniroute-response.pdf')
-  } finally {
-    document.body.removeChild(container)
+    const token = localStorage.getItem('token')
+    const res = await fetch('/api/omniroute/export/pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ content }),
+    })
+    if (!res.ok) throw new Error('Failed to generate PDF')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'omniroute-response.pdf'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (e: any) {
+    alert('PDF export failed: ' + e.message)
   }
 }
 
@@ -614,7 +607,7 @@ export function OmniroutePanel() {
                   </div>
                 )}
                 <MessageContent content={msg.content} isUser={msg.role === 'user'} />
-                <div className={`flex gap-1 mt-1.5 ${msg.role === 'user' ? 'justify-start' : 'justify-start'}`}>
+                <div className={`absolute -top-2 right-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
                   {msg.role === 'user' ? (
                     <button onClick={async () => {
                       const text = typeof msg.content === 'string' ? msg.content : ''
@@ -632,27 +625,27 @@ export function OmniroutePanel() {
                         setCopiedIdx(i)
                         setTimeout(() => setCopiedIdx(null), 1500)
                       }
-                    }} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors flex items-center gap-0.5" title="Copy prompt">
-                      {copiedIdx === i ? <><Check className="w-3 h-3" /> Copied</> : <Copy className="w-3 h-3" />}
+                    }} className={`w-5 h-5 flex items-center justify-center rounded-full transition-colors ${copiedIdx === i ? 'bg-green-600 text-white' : 'bg-zinc-700 hover:bg-zinc-600 text-zinc-300'}`} title="Copy prompt">
+                      {copiedIdx === i ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                     </button>
                   ) : (
                     <>
-                      <button onClick={() => exportAsHtml(msg.content)} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors flex items-center gap-0.5" title="View as HTML">
-                        <FileCode className="w-3 h-3" /> HTML
+                      <button onClick={() => exportAsHtml(msg.content)} className="w-5 h-5 bg-zinc-700 hover:bg-zinc-600 rounded-full flex items-center justify-center text-zinc-300 transition-colors" title="View as HTML">
+                        <FileCode className="w-3 h-3" />
                       </button>
-                      <button onClick={() => exportAsPdf(msg.content)} className="text-[10px] px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors flex items-center gap-0.5" title="Save as PDF">
-                        <FileText className="w-3 h-3" /> PDF
+                      <button onClick={() => exportAsPdf(msg.content)} className="w-5 h-5 bg-zinc-700 hover:bg-zinc-600 rounded-full flex items-center justify-center text-zinc-300 transition-colors" title="Save as PDF">
+                        <FileText className="w-3 h-3" />
                       </button>
                     </>
                   )}
+                  <button
+                    onClick={() => handleRemoveMessage(i)}
+                    className="w-5 h-5 bg-zinc-700 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors"
+                    title="Remove message"
+                  >
+                    <X className="w-3 h-3 text-zinc-300" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleRemoveMessage(i)}
-                  className="absolute -top-2 -right-2 w-5 h-5 bg-zinc-700 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Remove message"
-                >
-                  <X className="w-3 h-3 text-zinc-300" />
-                </button>
               </div>
             </div>
           ))}

@@ -3,6 +3,11 @@ import { requireAuth } from '../middleware/auth'
 import { AuthRequest } from '../middleware/checkPremium'
 import { AppError } from '../middleware/errorHandler'
 import { getConfig, updateConfig, chatCompletion, getApiKeys, addApiKey, deleteApiKey, listChats, getChat, createChat, updateChat, deleteChat } from '../services/omniroute'
+import katex from 'katex'
+import { chromium } from 'playwright'
+import * as fs from 'fs'
+import * as path from 'path'
+import * as os from 'os'
 
 const router = Router()
 
@@ -120,6 +125,71 @@ router.put('/chats/:id', requireAuth, async (req: AuthRequest, res: Response) =>
 router.delete('/chats/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   await deleteChat(String(req.params.id), req.userId!)
   res.json({ ok: true })
+})
+
+function renderMathInText(text: string): string {
+  let result = text
+  result = result.replace(/\$\$([\s\S]+?)\$\$/g, (_, math: string) => {
+    try { return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false }) }
+    catch { return `<code>${math}</code>` }
+  })
+  result = result.replace(/\\\[(.+?)\\\]/gs, (_, math: string) => {
+    try { return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false }) }
+    catch { return `<code>${math}</code>` }
+  })
+  result = result.replace(/\$([^\n$]+?)\$/g, (_, math: string) => {
+    try { return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false }) }
+    catch { return `<code>${math}</code>` }
+  })
+  result = result.replace(/\\\((.+?)\\\)/gs, (_, math: string) => {
+    try { return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false }) }
+    catch { return `<code>${math}</code>` }
+  })
+  return result
+}
+
+router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) => {
+  const { content } = req.body
+  if (!content || typeof content !== 'string') throw new AppError(400, 'content is required')
+
+  const rendered = renderMathInText(content)
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.1/dist/katex.min.css">
+<style>
+  body{font-family:Georgia,serif;max-width:210mm;margin:0 auto;padding:20mm 15mm;line-height:1.8;font-size:12pt;color:#1a1a2e}
+  img{max-width:100%}
+  .katex{font-size:1.1em}
+  code{background:#f1f1f1;padding:0.15em 0.3em;border-radius:3px;font-size:0.9em;font-family:monospace}
+  pre{background:#f5f5f5;padding:0.8rem 1rem;border-radius:6px;overflow-x:auto;page-break-inside:avoid}
+  pre code{background:none;padding:0}
+  table{border-collapse:collapse;width:100%;page-break-inside:avoid}
+  td,th{border:1px solid #ccc;padding:6px 10px;text-align:left}
+  th{background:#f0f0f0}
+  h1,h2,h3,h4{page-break-after:avoid;color:#111}
+  p,li{page-break-inside:avoid}
+</style></head><body>${rendered}</body></html>`
+
+  const tmpFile = path.join(os.tmpdir(), `omniroute-pdf-${Date.now()}.html`)
+  const tmpPdf = path.join(os.tmpdir(), `omniroute-pdf-${Date.now()}.pdf`)
+
+  try {
+    fs.writeFileSync(tmpFile, html, 'utf-8')
+
+    const browser = await chromium.launch({ headless: true })
+    const page = await browser.newPage()
+    await page.goto(`file://${tmpFile}`, { waitUntil: 'networkidle' })
+    await page.pdf({ path: tmpPdf, format: 'A4', printBackground: true, margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' } })
+    await browser.close()
+
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', 'attachment; filename="omniroute-response.pdf"')
+    const pdfBuf = fs.readFileSync(tmpPdf)
+    res.send(pdfBuf)
+  } finally {
+    try { fs.unlinkSync(tmpFile) } catch {}
+    try { fs.unlinkSync(tmpPdf) } catch {}
+  }
 })
 
 export default router
