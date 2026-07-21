@@ -152,7 +152,12 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
   const { content } = req.body
   if (!content || typeof content !== 'string') throw new AppError(400, 'content is required')
 
-  const rendered = renderMathInText(content)
+  function escapeHtml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;')
+  }
+
+  const escaped = escapeHtml(content)
+  const rendered = renderMathInText(escaped)
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.1/dist/katex.min.css">
@@ -170,7 +175,6 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
   p,li{page-break-inside:avoid}
 </style></head><body>${rendered}</body></html>`
 
-  const tmpFile = path.join(os.tmpdir(), `omniroute-pdf-${Date.now()}.html`)
   const tmpPdf = path.join(os.tmpdir(), `omniroute-pdf-${Date.now()}.pdf`)
 
   try {
@@ -179,7 +183,7 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     })
     const page = await browser.newPage()
-    await page.setContent(html, { waitUntil: 'networkidle' })
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 30000 })
     await page.pdf({ path: tmpPdf, format: 'A4', printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } })
     await browser.close()
 
@@ -192,8 +196,9 @@ router.post('/export/pdf', requireAuth, async (req: AuthRequest, res: Response) 
     res.setHeader('Content-Length', stat.size)
     const readStream = fs.createReadStream(tmpPdf)
     readStream.pipe(res)
+  } catch (err) {
+    throw new AppError(500, err instanceof Error ? err.message : 'PDF generation failed')
   } finally {
-    try { fs.unlinkSync(tmpFile) } catch {}
     try { fs.unlinkSync(tmpPdf) } catch {}
   }
 })
